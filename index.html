@@ -33,6 +33,10 @@
   .lbl-locked { color: var(--dim); font-weight: 400; }
   .del { opacity: 0; transition: opacity .12s; cursor: pointer; }
   .node:hover .del { opacity: 1; }
+  .port { cursor: crosshair; touch-action: none; }
+  .port circle:first-child { transition: r .12s, fill .12s; }
+  .node:hover .port circle:first-child { fill: var(--gold); }
+  body.linking, body.linking * { cursor: crosshair !important; user-select: none; }
   .node rect { transition: stroke .15s, fill .15s; }
   .edge-lit {
     stroke-dasharray: 6 10;
@@ -175,6 +179,8 @@ function TechTree() {
   const [editing, setEditing] = useState(null);
   const [editText, setEditText] = useState("");
   const [status, setStatus]   = useState("");
+  const [drag, setDrag]       = useState(null);   // {from, x, y, over} while dragging a link
+  const svgRef = useRef(null);
 
   /* load once */
   useEffect(() => {
@@ -244,6 +250,18 @@ function TechTree() {
     return walk(to);
   };
 
+  const tryLink = (from, to) => {
+    if (from === to) return;
+    if (wouldCycle(from, to)) {
+      setStatus("That would loop back on itself. Nothing could start.");
+    } else if (edges.some(x => x.from === from && x.to === to)) {
+      setStatus("Those are already linked.");
+    } else {
+      setEdges(x => [...x, { from, to }]);
+      setStatus("");
+    }
+  };
+
   const handleNodeClick = (id, e) => {
     if (e.shiftKey) {
       if (linkFrom === null) {
@@ -253,20 +271,53 @@ function TechTree() {
         setLinkFrom(null);
         setStatus("");
       } else {
-        if (wouldCycle(linkFrom, id)) {
-          setStatus("That would loop back on itself. Nothing could start.");
-        } else if (edges.some(x => x.from === linkFrom && x.to === id)) {
-          setStatus("Those are already linked.");
-        } else {
-          setEdges(x => [...x, { from: linkFrom, to: id }]);
-          setStatus("");
-        }
+        tryLink(linkFrom, id);
         setLinkFrom(null);
       }
       return;
     }
     toggle(id);
   };
+
+  /* drag-to-link: start from a node's port, drop on another node */
+  const svgPoint = e => {
+    const r = svgRef.current.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+
+  const startDrag = (id, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const p = svgPoint(e);
+    setDrag({ from: id, x: p.x, y: p.y, over: null });
+  };
+
+  useEffect(() => {
+    if (!drag) return;
+    document.body.classList.add("linking");
+    const nodeUnder = e => {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const g = el && el.closest ? el.closest("[data-nodeid]") : null;
+      const id = g ? g.getAttribute("data-nodeid") : null;
+      return id && id !== drag.from ? id : null;
+    };
+    const move = e => {
+      const p = svgPoint(e);
+      setDrag(d => d && { ...d, x: p.x, y: p.y, over: nodeUnder(e) });
+    };
+    const up = e => {
+      const target = nodeUnder(e);
+      if (target) tryLink(drag.from, target);
+      setDrag(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      document.body.classList.remove("linking");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, [drag && drag.from, edges]);
 
   const removeEdge = (from, to) =>
     setEdges(e => e.filter(x => !(x.from === from && x.to === to)));
@@ -285,7 +336,7 @@ function TechTree() {
 
   useEffect(() => {
     const onKey = e => {
-      if (e.key === "Escape") { setLinkFrom(null); setEditing(null); setStatus(""); }
+      if (e.key === "Escape") { setLinkFrom(null); setEditing(null); setDrag(null); setStatus(""); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -345,7 +396,7 @@ function TechTree() {
           <span style={{...S.dot, background: "transparent", border: "1.5px solid var(--line)"}} /> locked
         </span>
         <span style={S.hintText}>
-          Click to complete · shift-click two tasks to link · double-click to rename · click a line to unlink
+          Click to complete · drag a task's ○ port onto another task to link · double-click to rename · click a line to unlink
         </span>
         {status && <span style={S.status}>{status}</span>}
       </div>
@@ -357,7 +408,7 @@ function TechTree() {
         </div>
       ) : (
         <div style={S.canvas}>
-          <svg width={width} height={height} style={{ display: "block" }}>
+          <svg ref={svgRef} width={width} height={height} style={{ display: "block" }}>
             <defs>
               <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4"
                       markerWidth="7" markerHeight="7" orient="auto">
@@ -403,16 +454,18 @@ function TechTree() {
               if (!p) return null;
               const unlocked = ready(n.id);
               const isLink   = linkFrom === n.id;
+              const isOver   = drag && drag.over === n.id;
               const fill = n.done ? "#1d2233" : "#16202f";
               return (
                 <g key={n.id} transform={`translate(${p.x},${p.y})`} className="node"
+                   data-nodeid={n.id}
                    onClick={e => handleNodeClick(n.id, e)}
                    onDoubleClick={e => { e.stopPropagation(); startEdit(n.id); }}
                    style={{ cursor: "pointer" }}>
                   <rect width={NODE_W} height={NODE_H} rx="6"
-                        fill={fill}
-                        stroke={isLink ? "#e8edf5" : n.done ? "#f5b83d" : unlocked ? "#8fa0b8" : "#2a3850"}
-                        strokeWidth={isLink ? 2 : n.done ? 1.75 : unlocked ? 1.5 : 1}
+                        fill={isOver ? "#1d2a3f" : fill}
+                        stroke={isOver || isLink ? "#e8edf5" : n.done ? "#f5b83d" : unlocked ? "#8fa0b8" : "#2a3850"}
+                        strokeWidth={isOver || isLink ? 2 : n.done ? 1.75 : unlocked ? 1.5 : 1}
                         filter={n.done ? "url(#glow)" : undefined}
                         opacity={!n.done && !unlocked ? 0.65 : 1} />
                   {n.done && (
@@ -420,12 +473,19 @@ function TechTree() {
                           strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   )}
                   <foreignObject x={n.done ? 44 : 16} y="10"
-                                 width={NODE_W - (n.done ? 64 : 36)} height={NODE_H - 20}>
+                                 width={NODE_W - (n.done ? 64 : 36)} height={NODE_H - 20}
+                                 style={{ pointerEvents: "none" }}>
                     <div xmlns="http://www.w3.org/1999/xhtml"
                          className={"lbl" + (n.done ? " lbl-done" : (!unlocked ? " lbl-locked" : ""))}>
                       {n.label}
                     </div>
                   </foreignObject>
+                  <g className="port" onPointerDown={e => startDrag(n.id, e)}>
+                    <circle cx={NODE_W} cy={NODE_H / 2} r="6"
+                            fill="#0d1420" stroke="#f5b83d" strokeWidth="1.5" />
+                    <circle cx={NODE_W} cy={NODE_H / 2} r="14" fill="transparent" />
+                    <title>Drag to another task to link them</title>
+                  </g>
                   <g className="del"
                      onClick={e => { e.stopPropagation(); removeNode(n.id); }}>
                     <circle cx={NODE_W - 14} cy="14" r="10" fill="transparent" />
@@ -436,6 +496,19 @@ function TechTree() {
                 </g>
               );
             })}
+
+            {drag && (() => {
+              const a = pos[drag.from];
+              if (!a) return null;
+              const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2;
+              const dx = Math.max(40, Math.abs(drag.x - x1) * 0.5);
+              return (
+                <path d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${drag.x - dx} ${drag.y}, ${drag.x} ${drag.y}`}
+                      fill="none" stroke="#f5b83d" strokeWidth="2"
+                      strokeDasharray="6 6" opacity="0.8"
+                      style={{ pointerEvents: "none" }} />
+              );
+            })()}
           </svg>
         </div>
       )}
