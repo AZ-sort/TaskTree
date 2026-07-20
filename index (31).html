@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tech Tree</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #faf7f0; }
+  .lbl {
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 13.5px; line-height: 1.34; color: #2b2822;
+    letter-spacing: -0.005em;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .lbl-done { color: #4a6b57; }
+  .del { opacity: 0; transition: opacity .12s; cursor: pointer; }
+  .node:hover .del { opacity: 1; }
+  .node rect { transition: stroke .12s, filter .12s; }
+  .node:hover rect { filter: brightness(0.985); }
+  .edge path:first-child { transition: stroke .2s, opacity .2s; }
+  button:focus-visible, input:focus-visible {
+    outline: 2px solid #b8622e; outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef } = React;
+
+/* ------------------------------------------------------------------
+   Tech Tree — left-to-right dependency graph.
+   Prerequisites on the left, goal on the right.
+   Saves to localStorage. No build step, no server.
+------------------------------------------------------------------- */
+
+const NODE_W   = 240;
+const NODE_H   = 84;
+const RANK_GAP = 160;
+const ROW_GAP  = 40;
+
+const STORAGE_KEY = "techtree:graph";
+
+const SEED = {
+  nodes: [
+    { id: "n1", label: "Async / turn-based mode", done: false },
+    { id: "n2", label: "Fix landing copy", done: false },
+    { id: "n3", label: "Post to r/LongDistance", done: false },
+    { id: "n4", label: "A stranger couple plays twice in one week", done: false },
+    { id: "n5", label: "2P Duel board", done: true },
+  ],
+  edges: [
+    { from: "n5", to: "n1" },
+    { from: "n1", to: "n3" },
+    { from: "n2", to: "n3" },
+    { from: "n3", to: "n4" },
+  ],
+};
+
+/* ---------------- layout ---------------- */
+
+function layout(nodes, edges) {
+  const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const incoming = Object.fromEntries(nodes.map(n => [n.id, []]));
+  const outgoing = Object.fromEntries(nodes.map(n => [n.id, []]));
+  edges.forEach(e => {
+    // ignore self-loops and edges pointing at nodes that no longer exist
+    if (byId[e.from] && byId[e.to] && e.from !== e.to) {
+      outgoing[e.from].push(e.to);
+      incoming[e.to].push(e.from);
+    }
+  });
+
+  // Drop any back-edges so the graph is a genuine DAG before ranking.
+  // The UI prevents cycles, but saved data or hand-edited JSON might contain one.
+  const state = {};                            // 0 = unvisited, 1 = on stack, 2 = done
+  const dropped = new Set();
+  const dfs = id => {
+    state[id] = 1;
+    outgoing[id].forEach(next => {
+      if (state[next] === 1) dropped.add(id + "\u0000" + next);   // back-edge
+      else if (!state[next]) dfs(next);
+    });
+    state[id] = 2;
+  };
+  nodes.forEach(n => { if (!state[n.id]) dfs(n.id); });
+  if (dropped.size) {
+    nodes.forEach(n => {
+      outgoing[n.id] = outgoing[n.id].filter(t => !dropped.has(n.id + "\u0000" + t));
+      incoming[n.id] = incoming[n.id].filter(s => !dropped.has(s + "\u0000" + n.id));
+    });
+  }
+
+  // longest-path ranking: a node sits one column right of its furthest prerequisite
+  const rank = {};
+  const compute = id => {
+    if (rank[id] !== undefined) return rank[id];
+    rank[id] = 0;                              // provisional, prevents re-entry
+    const r = incoming[id].length ? Math.max(...incoming[id].map(compute)) + 1 : 0;
+    rank[id] = r;
+    return r;
+  };
+  nodes.forEach(n => compute(n.id));
+
+  const cols = {};
+  nodes.forEach(n => { (cols[rank[n.id]] = cols[rank[n.id]] || []).push(n.id); });
+
+  // barycentre ordering to reduce edge crossings
+  const rankKeys = Object.keys(cols).map(Number).sort((a, b) => a - b);
+  const order = {};
+  rankKeys.forEach(r => cols[r].forEach((id, i) => (order[id] = i)));
+  for (let pass = 0; pass < 4; pass++) {
+    rankKeys.slice(1).forEach(r => {
+      cols[r].sort((a, b) => {
+        const bc = id => incoming[id].length
+          ? incoming[id].reduce((s, p) => s + (order[p] ?? 0), 0) / incoming[id].length
+          : (order[id] ?? 0);
+        return bc(a) - bc(b);
+      });
+      cols[r].forEach((id, i) => (order[id] = i));
+    });
+  }
+
+  const tallest = Math.max(...rankKeys.map(r => cols[r].length), 1);
+  const height  = Math.max(tallest * NODE_H + (tallest - 1) * ROW_GAP + 80, NODE_H + 80);
+
+  const pos = {};
+  rankKeys.forEach(r => {
+    const list = cols[r];
+    const colH = list.length * NODE_H + (list.length - 1) * ROW_GAP;
+    const startY = (height - colH) / 2;
+    list.forEach((id, i) => {
+      pos[id] = { x: 48 + r * (NODE_W + RANK_GAP), y: startY + i * (NODE_H + ROW_GAP) };
+    });
+  });
+
+  const width = 96 + (rankKeys.length || 1) * (NODE_W + RANK_GAP) - RANK_GAP;
+  return { pos, incoming, outgoing, width, height };
+}
+
+/* ---------------- app ---------------- */
+
+function TechTree() {
+  const [nodes, setNodes]     = useState(SEED.nodes);
+  const [edges, setEdges]     = useState(SEED.edges);
+  const [loaded, setLoaded]   = useState(false);
+  const [draft, setDraft]     = useState("");
+  const [linkFrom, setLinkFrom] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [status, setStatus]   = useState("");
+
+  /* load once */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const g = JSON.parse(raw);
+        if (Array.isArray(g.nodes) && g.nodes.length) {
+          setNodes(g.nodes);
+          setEdges(Array.isArray(g.edges) ? g.edges : []);
+        }
+      }
+    } catch (err) {
+      setStatus("Couldn't read saved data. Starting from the example tree.");
+    }
+    setLoaded(true);
+  }, []);
+
+  /* save on change */
+  useEffect(() => {
+    if (!loaded) return;
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }));
+      } catch (err) {
+        setStatus("Changes aren't saving. They'll be lost on reload.");
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [nodes, edges, loaded]);
+
+  const { pos, incoming, outgoing, width, height } = useMemo(
+    () => layout(nodes, edges), [nodes, edges]
+  );
+
+  const doneSet = useMemo(
+    () => new Set(nodes.filter(n => n.done).map(n => n.id)), [nodes]
+  );
+  const ready = id => (incoming[id] || []).every(p => doneSet.has(p));
+
+  /* mutations */
+  const addNode = () => {
+    const label = draft.trim();
+    if (!label) return;
+    const id = "n" + Math.random().toString(36).slice(2, 9);
+    setNodes(n => [...n, { id, label, done: false }]);
+    setDraft("");
+  };
+
+  const removeNode = id => {
+    setNodes(n => n.filter(x => x.id !== id));
+    setEdges(e => e.filter(x => x.from !== id && x.to !== id));
+    setLinkFrom(f => (f === id ? null : f));
+  };
+
+  const toggle = id =>
+    setNodes(n => n.map(x => (x.id === id ? { ...x, done: !x.done } : x)));
+
+  const wouldCycle = (from, to) => {
+    const seen = new Set();
+    const walk = id => {
+      if (id === from) return true;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return (outgoing[id] || []).some(walk);
+    };
+    return walk(to);
+  };
+
+  const handleNodeClick = (id, e) => {
+    if (e.shiftKey) {
+      if (linkFrom === null) {
+        setLinkFrom(id);
+        setStatus("Now shift-click the task this unlocks.");
+      } else if (linkFrom === id) {
+        setLinkFrom(null);
+        setStatus("");
+      } else {
+        if (wouldCycle(linkFrom, id)) {
+          setStatus("That would loop back on itself. Nothing could start.");
+        } else if (edges.some(x => x.from === linkFrom && x.to === id)) {
+          setStatus("Those are already linked.");
+        } else {
+          setEdges(x => [...x, { from: linkFrom, to: id }]);
+          setStatus("");
+        }
+        setLinkFrom(null);
+      }
+      return;
+    }
+    toggle(id);
+  };
+
+  const removeEdge = (from, to) =>
+    setEdges(e => e.filter(x => !(x.from === from && x.to === to)));
+
+  const startEdit = id => {
+    const n = nodes.find(x => x.id === id);
+    setEditing(id);
+    setEditText(n.label);
+  };
+
+  const commitEdit = () => {
+    const label = editText.trim();
+    if (label) setNodes(n => n.map(x => (x.id === editing ? { ...x, label } : x)));
+    setEditing(null);
+  };
+
+  useEffect(() => {
+    const onKey = e => {
+      if (e.key === "Escape") { setLinkFrom(null); setEditing(null); setStatus(""); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const doneCount = nodes.filter(n => n.done).length;
+  const nextUp = nodes.filter(n => !n.done && ready(n.id));
+
+  const path = (a, b) => {
+    const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2;
+    const x2 = b.x,          y2 = b.y + NODE_H / 2;
+    const dx = Math.max(50, (x2 - x1) * 0.5);
+    return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+  };
+
+  return (
+    <div style={S.shell}>
+      <header style={S.head}>
+        <div>
+          <div style={S.eyebrow}>Dependency tree</div>
+          <h1 style={S.h1}>What unlocks what</h1>
+        </div>
+        <div style={S.count}>
+          <span style={S.countNum}>{doneCount}</span>
+          <span style={S.countDen}>/{nodes.length}</span>
+        </div>
+      </header>
+
+      <div style={S.bar}>
+        <input
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && addNode()}
+          placeholder="Add a task"
+          style={S.input}
+          aria-label="New task"
+        />
+        <button onClick={addNode} style={S.btn} disabled={!draft.trim()}>Add</button>
+      </div>
+
+      <p style={S.hint}>
+        Click a task to complete it. Shift-click one task then another to make the
+        first a prerequisite. Double-click to rename. Click a line to unlink.
+        {status && <span style={S.status}> {status}</span>}
+      </p>
+
+      {nodes.length === 0 ? (
+        <div style={S.empty}>Add your goal first, then work backwards to what it needs.</div>
+      ) : (
+        <div style={S.canvas}>
+          <svg width={width} height={height} style={{ display: "block" }}>
+            <defs>
+              <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4"
+                      markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0,0 L8,4 L0,8 z" fill="#6b6558" />
+              </marker>
+              <marker id="arDone" viewBox="0 0 8 8" refX="7" refY="4"
+                      markerWidth="7" markerHeight="7" orient="auto">
+                <path d="M0,0 L8,4 L0,8 z" fill="#3f7d5c" />
+              </marker>
+            </defs>
+
+            {edges.map((e, i) => {
+              const a = pos[e.from], b = pos[e.to];
+              if (!a || !b) return null;
+              const live = doneSet.has(e.from);
+              return (
+                <g key={i} className="edge">
+                  <path d={path(a, b)} fill="none"
+                        stroke={live ? "#3f7d5c" : "#6b6558"}
+                        strokeWidth={live ? 2 : 1.5}
+                        strokeDasharray={live ? "none" : "5 4"}
+                        opacity={live ? 0.9 : 0.5}
+                        markerEnd={live ? "url(#arDone)" : "url(#ar)"} />
+                  <path d={path(a, b)} fill="none" stroke="transparent" strokeWidth="16"
+                        style={{ cursor: "pointer" }}
+                        onClick={() => removeEdge(e.from, e.to)}>
+                    <title>Remove this link</title>
+                  </path>
+                </g>
+              );
+            })}
+
+            {nodes.map(n => {
+              const p = pos[n.id];
+              if (!p) return null;
+              const unlocked = ready(n.id);
+              const isLink   = linkFrom === n.id;
+              const fill   = n.done ? "#e8f0e6" : unlocked ? "#fffdf7" : "#f0ece2";
+              const stroke = isLink ? "#b8622e"
+                           : n.done ? "#3f7d5c"
+                           : unlocked ? "#2b2822" : "#c4bdae";
+              return (
+                <g key={n.id} transform={`translate(${p.x},${p.y})`} className="node"
+                   onClick={e => handleNodeClick(n.id, e)}
+                   onDoubleClick={e => { e.stopPropagation(); startEdit(n.id); }}
+                   style={{ cursor: "pointer" }}>
+                  <rect width={NODE_W} height={NODE_H} rx="3" fill={fill} stroke={stroke}
+                        strokeWidth={isLink ? 2.5 : (n.done || unlocked) ? 1.75 : 1}
+                        opacity={!n.done && !unlocked ? 0.75 : 1} />
+                  {n.done && (
+                    <path d="M 15 42 l 7 7 l 13 -15" fill="none" stroke="#3f7d5c"
+                          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  )}
+                  <foreignObject x={n.done ? 44 : 16} y="10"
+                                 width={NODE_W - (n.done ? 64 : 36)} height={NODE_H - 20}>
+                    <div xmlns="http://www.w3.org/1999/xhtml"
+                         className={"lbl" + (n.done ? " lbl-done" : "")}>
+                      {n.label}
+                    </div>
+                  </foreignObject>
+                  <g className="del"
+                     onClick={e => { e.stopPropagation(); removeNode(n.id); }}>
+                    <circle cx={NODE_W - 14} cy="14" r="10" fill="transparent" />
+                    <path d={`M ${NODE_W - 18} 10 l 8 8 M ${NODE_W - 10} 10 l -8 8`}
+                          stroke="#8a8272" strokeWidth="1.5" strokeLinecap="round" />
+                    <title>Delete task</title>
+                  </g>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      )}
+
+      {nextUp.length > 0 && (
+        <div style={S.next}>
+          <span style={S.nextLabel}>Ready now</span>
+          {nextUp.map(n => <span key={n.id} style={S.chip}>{n.label}</span>)}
+        </div>
+      )}
+
+      {editing && (
+        <div style={S.overlay} onClick={() => setEditing(null)}>
+          <div style={S.modal} onClick={e => e.stopPropagation()}>
+            <label style={S.modalLabel}>Rename task</label>
+            <input autoFocus value={editText}
+                   onChange={e => setEditText(e.target.value)}
+                   onKeyDown={e => e.key === "Enter" && commitEdit()}
+                   style={S.input} />
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button onClick={commitEdit} style={S.btn}>Save</button>
+              <button onClick={() => setEditing(null)} style={S.btnGhost}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- styles ---------------- */
+
+const S = {
+  shell: {
+    fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif",
+    background: "#faf7f0", color: "#2b2822",
+    padding: "28px 24px 40px", minHeight: "100vh", boxSizing: "border-box",
+  },
+  head: {
+    display: "flex", alignItems: "flex-end", justifyContent: "space-between",
+    gap: 16, marginBottom: 22, maxWidth: 1100,
+  },
+  eyebrow: {
+    fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase",
+    color: "#8a8272", marginBottom: 6,
+  },
+  h1: { margin: 0, fontSize: 27, fontWeight: 600, letterSpacing: "-0.02em" },
+  count: { display: "flex", alignItems: "baseline", gap: 1 },
+  countNum: { fontSize: 27, fontWeight: 600, color: "#3f7d5c" },
+  countDen: { fontSize: 16, color: "#8a8272" },
+  bar: { display: "flex", gap: 8, marginBottom: 10, maxWidth: 520 },
+  input: {
+    flex: 1, padding: "9px 12px", fontSize: 14, fontFamily: "inherit",
+    border: "1px solid #d9d2c4", borderRadius: 3, background: "#fffdf7",
+    color: "#2b2822", outline: "none", minWidth: 0,
+  },
+  btn: {
+    padding: "9px 18px", fontSize: 14, fontFamily: "inherit", fontWeight: 500,
+    border: "1px solid #2b2822", borderRadius: 3, background: "#2b2822",
+    color: "#faf7f0", cursor: "pointer",
+  },
+  btnGhost: {
+    padding: "9px 18px", fontSize: 14, fontFamily: "inherit",
+    border: "1px solid #d9d2c4", borderRadius: 3, background: "transparent",
+    color: "#6b6558", cursor: "pointer",
+  },
+  hint: {
+    fontSize: 12.5, color: "#8a8272", margin: "0 0 18px",
+    maxWidth: 660, lineHeight: 1.5,
+  },
+  status: { color: "#b8622e" },
+  canvas: {
+    overflowX: "auto", overflowY: "hidden",
+    border: "1px solid #e6e0d2", borderRadius: 4,
+    background:
+      "repeating-linear-gradient(90deg,#fdfbf5 0 1px,transparent 1px 40px)," +
+      "repeating-linear-gradient(0deg,#fdfbf5 0 1px,transparent 1px 40px),#fbf9f3",
+  },
+  empty: {
+    padding: "48px 24px", textAlign: "center", color: "#8a8272",
+    fontSize: 14, border: "1px dashed #d9d2c4", borderRadius: 4,
+  },
+  next: {
+    display: "flex", flexWrap: "wrap", alignItems: "center",
+    gap: 8, marginTop: 16,
+  },
+  nextLabel: {
+    fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase",
+    color: "#8a8272",
+  },
+  chip: {
+    fontSize: 12.5, padding: "4px 10px", background: "#fffdf7",
+    border: "1px solid #d9d2c4", borderRadius: 20,
+  },
+  overlay: {
+    position: "fixed", inset: 0, background: "rgba(43,40,34,0.3)",
+    display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+  },
+  modal: {
+    background: "#faf7f0", padding: 22, borderRadius: 4,
+    width: "100%", maxWidth: 380, border: "1px solid #d9d2c4",
+  },
+  modalLabel: {
+    display: "block", fontSize: 11, letterSpacing: "0.14em",
+    textTransform: "uppercase", color: "#8a8272", marginBottom: 8,
+  },
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<TechTree />);
+</script>
+</body>
+</html>
