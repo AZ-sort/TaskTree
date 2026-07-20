@@ -4,47 +4,43 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Task Tree</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M11 16h5m0 0V8h5m-5 8v8h5' stroke='%231c1c1a' stroke-width='1.5' fill='none'/%3E%3Crect x='3' y='12' width='8' height='8' rx='1.5' fill='%231c1c1a'/%3E%3Crect x='21' y='4' width='8' height='8' rx='1.5' fill='none' stroke='%23a8a8a2' stroke-width='1.5' stroke-dasharray='2 2'/%3E%3Crect x='21' y='20' width='8' height='8' rx='1.5' fill='%231a7a4f'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
   :root {
-    --field:  #0d1420;
-    --grid:   #182238;
-    --panel:  #16202f;
-    --line:   #3a4a63;
-    --ink:    #e8edf5;
-    --dim:    #8fa0b8;
-    --gold:   #f5b83d;
-    --gold-soft: rgba(245,184,61,0.16);
+    --paper:   #f6f6f4;
+    --surface: #ffffff;
+    --ink:     #1c1c1a;
+    --muted:   #6e6e68;
+    --hair:    #e4e4df;
+    --hair2:   #cfcfc8;
+    --green:   #1a7a4f;
+    --green-tint: #eef5f0;
   }
-  html, body { margin: 0; padding: 0; background: var(--field); }
+  html, body { margin: 0; padding: 0; background: var(--paper); }
   .lbl {
-    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-family: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
     font-size: 13.5px; line-height: 1.35; color: var(--ink);
-    font-weight: 500; letter-spacing: 0.005em;
+    font-weight: 500; letter-spacing: 0;
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .lbl-done { color: var(--gold); }
-  .lbl-locked { color: var(--dim); font-weight: 400; }
+  .lbl-done { color: var(--ink); }
+  .lbl-locked { color: var(--muted); font-weight: 400; }
   .del { opacity: 0; transition: opacity .12s; cursor: pointer; }
   .node:hover .del { opacity: 1; }
   .port { cursor: crosshair; touch-action: none; }
-  .port circle:first-child { transition: r .12s, fill .12s; }
-  .node:hover .port circle:first-child { fill: var(--gold); }
+  .port circle:first-child { transition: stroke .12s, fill .12s; }
+  .node:hover .port circle:first-child { stroke: var(--ink); }
   body.linking, body.linking * { cursor: crosshair !important; user-select: none; }
-  .node rect { transition: stroke .15s, fill .15s; }
-  .edge-lit {
-    stroke-dasharray: 6 10;
-    animation: flow 1.1s linear infinite;
-  }
-  @keyframes flow { to { stroke-dashoffset: -16; } }
-  button:focus-visible, input:focus-visible {
-    outline: 2px solid var(--gold); outline-offset: 2px;
+  .node rect { transition: stroke .12s, fill .12s; }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--ink); outline-offset: 2px;
   }
   @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; animation: none !important; }
@@ -58,9 +54,10 @@
 const { useState, useEffect, useMemo, useRef } = React;
 
 /* ------------------------------------------------------------------
-   Tech Tree — left-to-right dependency graph.
-   Prerequisites on the left, goal on the right.
-   Progress rendered as illumination: done chains glow gold.
+   Task Tree — left-to-right dependency graph.
+   Prerequisites on the left, the goal on the right.
+   State hierarchy is inverted on purpose: READY is the loudest state
+   (solid ink border), done recedes to green, locked is dashed.
    Saves to localStorage. No build step, no server.
 ------------------------------------------------------------------- */
 
@@ -415,6 +412,7 @@ function TechTree() {
   const doneCount = nodes.filter(n => n.done).length;
   const nextUp = nodes.filter(n => !n.done && ready(n.id));
   const pct = nodes.length ? Math.round((doneCount / nodes.length) * 100) : 0;
+  const pad = x => String(x).padStart(2, "0");
 
   const path = (a, b) => {
     const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2;
@@ -427,8 +425,8 @@ function TechTree() {
     <div style={S.shell}>
       <header style={S.head}>
         <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={S.eyebrow}>Dependency tree</div>
-          <h1 style={S.h1}>What unlocks what</h1>
+          <h1 style={S.h1}>Task Tree</h1>
+          <div style={S.sub}>what unlocks what</div>
           <div style={S.treeRow}>
             <select
               value={activeId}
@@ -454,10 +452,11 @@ function TechTree() {
           </div>
         </div>
         <div style={S.progressWrap}>
-          <div style={S.progressMeta}>
-            <span style={S.countNum}>{doneCount}</span>
-            <span style={S.countDen}> / {nodes.length} lit</span>
+          <div style={S.readout} aria-hidden="true">
+            <span style={S.readoutNum}>{pad(doneCount)}</span>
+            <span style={S.readoutDen}> / {pad(nodes.length)}</span>
           </div>
+          <div style={S.readoutLabel}>tasks complete</div>
           <div style={S.track} role="progressbar" aria-valuenow={pct} aria-valuemin="0" aria-valuemax="100">
             <div style={{ ...S.fill, width: pct + "%" }} />
           </div>
@@ -473,31 +472,31 @@ function TechTree() {
           style={S.input}
           aria-label="New task"
         />
-        <button onClick={addNode} style={{...S.btn, opacity: draft.trim() ? 1 : 0.45}} disabled={!draft.trim()}>
+        <button onClick={addNode} style={{...S.btn, opacity: draft.trim() ? 1 : 0.4}} disabled={!draft.trim()}>
           Add
         </button>
       </div>
 
       <div style={S.hintRow}>
         <span style={S.legend}>
-          <span style={{...S.dot, background: "var(--gold)"}} /> done
+          <span style={{...S.dot, background: "var(--green)", border: "1px solid var(--green)"}} /> done
         </span>
         <span style={S.legend}>
-          <span style={{...S.dot, background: "transparent", border: "1.5px solid var(--ink)"}} /> ready
+          <span style={{...S.dot, background: "var(--surface)", border: "2px solid var(--ink)"}} /> ready
         </span>
         <span style={S.legend}>
-          <span style={{...S.dot, background: "transparent", border: "1.5px solid var(--line)"}} /> locked
+          <span style={{...S.dot, background: "var(--surface)", border: "1px dashed var(--hair2)"}} /> locked
         </span>
         <span style={S.hintText}>
-          Click to complete · drag a task's ○ port onto another task to link · double-click to rename · click a line to unlink
+          click = done &nbsp;·&nbsp; drag ○ to link &nbsp;·&nbsp; double-click = rename &nbsp;·&nbsp; click a line to unlink
         </span>
         {status && <span style={S.status}>{status}</span>}
       </div>
 
       {nodes.length === 0 ? (
         <div style={S.empty}>
-          <div style={S.emptyTitle}>The board is dark</div>
-          Add your end goal first, then work backwards to what it needs.
+          <div style={S.emptyTitle}>Nothing here yet</div>
+          Add the end goal first, then work backwards to what it needs.
         </div>
       ) : (
         <div style={S.canvas}>
@@ -505,15 +504,12 @@ function TechTree() {
             <defs>
               <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4"
                       markerWidth="7" markerHeight="7" orient="auto">
-                <path d="M0,0 L8,4 L0,8 z" fill="#3a4a63" />
+                <path d="M0,0 L8,4 L0,8 z" fill="#c9c9c3" />
               </marker>
               <marker id="arLit" viewBox="0 0 8 8" refX="7" refY="4"
                       markerWidth="7" markerHeight="7" orient="auto">
-                <path d="M0,0 L8,4 L0,8 z" fill="#f5b83d" />
+                <path d="M0,0 L8,4 L0,8 z" fill="#1a7a4f" />
               </marker>
-              <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
-                <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#f5b83d" floodOpacity="0.35"/>
-              </filter>
             </defs>
 
             {edges.map((e, i) => {
@@ -522,16 +518,11 @@ function TechTree() {
               const lit = doneSet.has(e.from);
               return (
                 <g key={i} className="edge">
-                  {lit && (
-                    <path d={path(a, b)} fill="none" stroke="#f5b83d"
-                          strokeWidth="1.5" opacity="0.25" />
-                  )}
                   <path d={path(a, b)} fill="none"
-                        className={lit ? "edge-lit" : undefined}
-                        stroke={lit ? "#f5b83d" : "#3a4a63"}
-                        strokeWidth={lit ? 2 : 1.5}
-                        strokeDasharray={lit ? undefined : "3 6"}
-                        opacity={lit ? 0.95 : 0.6}
+                        stroke={lit ? "#1a7a4f" : "#c9c9c3"}
+                        strokeWidth={lit ? 1.75 : 1.25}
+                        strokeDasharray={lit ? undefined : "4 5"}
+                        opacity={lit ? 0.9 : 0.8}
                         markerEnd={lit ? "url(#arLit)" : "url(#ar)"} />
                   <path d={path(a, b)} fill="none" stroke="transparent" strokeWidth="16"
                         style={{ cursor: "pointer" }}
@@ -548,21 +539,22 @@ function TechTree() {
               const unlocked = ready(n.id);
               const isLink   = linkFrom === n.id;
               const isOver   = drag && drag.over === n.id;
-              const fill = n.done ? "#1d2233" : "#16202f";
               return (
                 <g key={n.id} transform={`translate(${p.x},${p.y})`} className="node"
                    data-nodeid={n.id}
                    onClick={e => handleNodeClick(n.id, e)}
                    onDoubleClick={e => { e.stopPropagation(); startEdit(n.id); }}
                    style={{ cursor: "pointer" }}>
-                  <rect width={NODE_W} height={NODE_H} rx="6"
-                        fill={isOver ? "#1d2a3f" : fill}
-                        stroke={isOver || isLink ? "#e8edf5" : n.done ? "#f5b83d" : unlocked ? "#8fa0b8" : "#2a3850"}
-                        strokeWidth={isOver || isLink ? 2 : n.done ? 1.75 : unlocked ? 1.5 : 1}
-                        filter={n.done ? "url(#glow)" : undefined}
-                        opacity={!n.done && !unlocked ? 0.65 : 1} />
+                  <rect width={NODE_W} height={NODE_H} rx="5"
+                        fill={isOver ? "#f0f0ee" : n.done ? "#eef5f0" : "#ffffff"}
+                        stroke={isOver || isLink ? "#1c1c1a"
+                              : n.done ? "#1a7a4f"
+                              : unlocked ? "#1c1c1a" : "#cfcfc8"}
+                        strokeWidth={isOver ? 2.5 : isLink ? 2 : n.done ? 1 : unlocked ? 2 : 1}
+                        strokeDasharray={!n.done && !unlocked ? "4 4" : undefined}
+                        opacity={!n.done && !unlocked ? 0.6 : 1} />
                   {n.done && (
-                    <path d="M 16 44 l 7 7 l 13 -15" fill="none" stroke="#f5b83d"
+                    <path d="M 16 44 l 7 7 l 13 -15" fill="none" stroke="#1a7a4f"
                           strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   )}
                   <foreignObject x={n.done ? 44 : 16} y="10"
@@ -575,7 +567,7 @@ function TechTree() {
                   </foreignObject>
                   <g className="port" onPointerDown={e => startDrag(n.id, e)}>
                     <circle cx={NODE_W} cy={NODE_H / 2} r="6"
-                            fill="#0d1420" stroke="#f5b83d" strokeWidth="1.5" />
+                            fill="#ffffff" stroke="#cfcfc8" strokeWidth="1.5" />
                     <circle cx={NODE_W} cy={NODE_H / 2} r="14" fill="transparent" />
                     <title>Drag to another task to link them</title>
                   </g>
@@ -583,7 +575,7 @@ function TechTree() {
                      onClick={e => { e.stopPropagation(); removeNode(n.id); }}>
                     <circle cx={NODE_W - 14} cy="14" r="10" fill="transparent" />
                     <path d={`M ${NODE_W - 18} 10 l 8 8 M ${NODE_W - 10} 10 l -8 8`}
-                          stroke="#8fa0b8" strokeWidth="1.5" strokeLinecap="round" />
+                          stroke="#6e6e68" strokeWidth="1.5" strokeLinecap="round" />
                     <title>Delete task</title>
                   </g>
                 </g>
@@ -597,8 +589,8 @@ function TechTree() {
               const dx = Math.max(40, Math.abs(drag.x - x1) * 0.5);
               return (
                 <path d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${drag.x - dx} ${drag.y}, ${drag.x} ${drag.y}`}
-                      fill="none" stroke="#f5b83d" strokeWidth="2"
-                      strokeDasharray="6 6" opacity="0.8"
+                      fill="none" stroke="#1c1c1a" strokeWidth="1.75"
+                      strokeDasharray="5 5" opacity="0.7"
                       style={{ pointerEvents: "none" }} />
               );
             })()}
@@ -608,7 +600,7 @@ function TechTree() {
 
       {nextUp.length > 0 && (
         <div style={S.next}>
-          <span style={S.nextLabel}>Ready now</span>
+          <span style={S.nextLabel}>Next up</span>
           {nextUp.map(n => (
             <button key={n.id} style={S.chip} onClick={() => toggle(n.id)}
                     title="Mark done">
@@ -660,125 +652,123 @@ function TechTree() {
 
 /* ---------------- styles ---------------- */
 
+const MONO = '"Spline Sans Mono", ui-monospace, "SF Mono", monospace';
+const SANS = '"Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif';
+
 const S = {
   shell: {
-    fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif',
-    background: "var(--field)", color: "var(--ink)",
-    padding: "28px 24px 40px", minHeight: "100vh", boxSizing: "border-box",
+    fontFamily: SANS,
+    background: "var(--paper)", color: "var(--ink)",
+    padding: "36px 28px 48px", minHeight: "100vh", boxSizing: "border-box",
   },
   head: {
     display: "flex", alignItems: "flex-end", justifyContent: "space-between",
-    flexWrap: "wrap", gap: 20, marginBottom: 24, maxWidth: 1100,
-  },
-  eyebrow: {
-    fontFamily: '"Chakra Petch", sans-serif',
-    fontSize: 11, letterSpacing: "0.22em", textTransform: "uppercase",
-    color: "var(--gold)", marginBottom: 6, fontWeight: 600,
+    flexWrap: "wrap", gap: 24, marginBottom: 28, maxWidth: 1100,
   },
   h1: {
-    fontFamily: '"Chakra Petch", sans-serif',
-    margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: "0.01em",
+    margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.015em",
+  },
+  sub: {
+    fontFamily: MONO, fontSize: 12, color: "var(--muted)",
+    marginTop: 3, letterSpacing: "0.02em",
   },
   treeRow: {
-    display: "flex", alignItems: "center", gap: 6, marginTop: 12, flexWrap: "wrap",
+    display: "flex", alignItems: "center", gap: 4, marginTop: 16, flexWrap: "wrap",
   },
   select: {
-    fontFamily: '"Chakra Petch", sans-serif',
+    fontFamily: SANS,
     fontSize: 13, fontWeight: 600, padding: "7px 10px",
-    background: "var(--panel)", color: "var(--ink)",
-    border: "1px solid var(--line)", borderRadius: 5,
+    background: "var(--surface)", color: "var(--ink)",
+    border: "1px solid var(--hair2)", borderRadius: 5,
     maxWidth: 220, cursor: "pointer",
   },
   treeBtn: {
-    fontFamily: "inherit", fontSize: 12, padding: "7px 10px",
-    background: "transparent", color: "var(--dim)",
+    fontFamily: SANS, fontSize: 12.5, padding: "7px 10px",
+    background: "transparent", color: "var(--muted)",
     border: "1px solid transparent", borderRadius: 5, cursor: "pointer",
   },
-  progressWrap: { minWidth: 200 },
-  progressMeta: { display: "flex", alignItems: "baseline", marginBottom: 6 },
-  countNum: {
-    fontFamily: '"Chakra Petch", sans-serif',
-    fontSize: 24, fontWeight: 700, color: "var(--gold)",
+  progressWrap: { minWidth: 190, textAlign: "right" },
+  readout: { fontFamily: MONO, lineHeight: 1 },
+  readoutNum: { fontSize: 30, fontWeight: 500, color: "var(--ink)" },
+  readoutDen: { fontSize: 15, color: "var(--muted)" },
+  readoutLabel: {
+    fontFamily: MONO, fontSize: 11, color: "var(--muted)",
+    margin: "5px 0 8px", letterSpacing: "0.04em",
   },
-  countDen: { fontSize: 13, color: "var(--dim)", marginLeft: 4 },
   track: {
-    height: 4, background: "var(--panel)", borderRadius: 2,
-    border: "1px solid var(--grid)", overflow: "hidden",
+    height: 3, background: "var(--hair)", borderRadius: 2, overflow: "hidden",
   },
   fill: {
-    height: "100%", background: "var(--gold)",
-    transition: "width .4s ease", borderRadius: 2,
+    height: "100%", background: "var(--green)",
+    transition: "width .4s ease",
   },
   bar: { display: "flex", gap: 8, marginBottom: 14, maxWidth: 520 },
   input: {
-    flex: 1, padding: "10px 12px", fontSize: 14, fontFamily: "inherit",
-    border: "1px solid var(--line)", borderRadius: 5,
-    background: "var(--panel)", color: "var(--ink)",
+    flex: 1, padding: "10px 12px", fontSize: 14, fontFamily: SANS,
+    border: "1px solid var(--hair2)", borderRadius: 5,
+    background: "var(--surface)", color: "var(--ink)",
     outline: "none", minWidth: 0,
   },
   btn: {
-    fontFamily: '"Chakra Petch", sans-serif',
-    padding: "10px 20px", fontSize: 14, fontWeight: 600,
-    border: "1px solid var(--gold)", borderRadius: 5,
-    background: "var(--gold)", color: "#0d1420", cursor: "pointer",
-    letterSpacing: "0.04em",
+    fontFamily: SANS,
+    padding: "10px 22px", fontSize: 14, fontWeight: 600,
+    border: "1px solid var(--ink)", borderRadius: 5,
+    background: "var(--ink)", color: "var(--paper)", cursor: "pointer",
   },
   btnGhost: {
-    fontFamily: '"Chakra Petch", sans-serif',
-    padding: "10px 20px", fontSize: 14,
-    border: "1px solid var(--line)", borderRadius: 5,
-    background: "transparent", color: "var(--dim)", cursor: "pointer",
+    fontFamily: SANS,
+    padding: "10px 22px", fontSize: 14,
+    border: "1px solid var(--hair2)", borderRadius: 5,
+    background: "transparent", color: "var(--muted)", cursor: "pointer",
   },
   hintRow: {
     display: "flex", flexWrap: "wrap", alignItems: "center",
-    gap: 14, marginBottom: 18, fontSize: 12.5, color: "var(--dim)",
+    gap: 16, marginBottom: 18,
+    fontFamily: MONO, fontSize: 11.5, color: "var(--muted)",
   },
   legend: { display: "inline-flex", alignItems: "center", gap: 6 },
-  dot: { width: 9, height: 9, borderRadius: 2, display: "inline-block", boxSizing: "border-box" },
-  hintText: { opacity: 0.85 },
-  status: { color: "var(--gold)" },
+  dot: { width: 10, height: 10, borderRadius: 3, display: "inline-block", boxSizing: "border-box" },
+  hintText: { opacity: 0.9 },
+  status: { color: "var(--ink)", fontWeight: 500 },
   canvas: {
     overflowX: "auto", overflowY: "hidden",
-    border: "1px solid var(--grid)", borderRadius: 8,
+    border: "1px solid var(--hair)", borderRadius: 6,
     background:
-      "radial-gradient(circle, #1a2438 1px, transparent 1px) 0 0 / 28px 28px, var(--field)",
+      "radial-gradient(circle, #dcdcd6 1px, transparent 1px) 0 0 / 26px 26px, var(--surface)",
   },
   empty: {
-    padding: "56px 24px", textAlign: "center", color: "var(--dim)",
-    fontSize: 14, border: "1px dashed var(--line)", borderRadius: 8,
-    lineHeight: 1.6,
+    padding: "56px 24px", textAlign: "center", color: "var(--muted)",
+    fontSize: 14, border: "1px dashed var(--hair2)", borderRadius: 6,
+    lineHeight: 1.6, background: "var(--surface)",
   },
   emptyTitle: {
-    fontFamily: '"Chakra Petch", sans-serif',
-    fontSize: 16, fontWeight: 600, color: "var(--ink)", marginBottom: 6,
+    fontSize: 15, fontWeight: 600, color: "var(--ink)", marginBottom: 6,
   },
   next: {
     display: "flex", flexWrap: "wrap", alignItems: "center",
     gap: 8, marginTop: 18,
   },
   nextLabel: {
-    fontFamily: '"Chakra Petch", sans-serif',
-    fontSize: 11, letterSpacing: "0.22em", textTransform: "uppercase",
-    color: "var(--gold)", fontWeight: 600,
+    fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em",
+    textTransform: "uppercase", color: "var(--muted)",
   },
   chip: {
-    fontFamily: "inherit", fontSize: 12.5, padding: "6px 12px",
-    background: "var(--panel)", border: "1px solid var(--line)",
-    borderRadius: 20, color: "var(--ink)", cursor: "pointer",
+    fontFamily: SANS, fontSize: 12.5, fontWeight: 500, padding: "6px 12px",
+    background: "var(--surface)", border: "1px solid var(--hair2)",
+    borderRadius: 5, color: "var(--ink)", cursor: "pointer",
   },
   overlay: {
-    position: "fixed", inset: 0, background: "rgba(5,9,16,0.7)",
+    position: "fixed", inset: 0, background: "rgba(28,28,26,0.35)",
     display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
   },
   modal: {
-    background: "var(--panel)", padding: 22, borderRadius: 8,
-    width: "100%", maxWidth: 380, border: "1px solid var(--line)",
+    background: "var(--surface)", padding: 22, borderRadius: 6,
+    width: "100%", maxWidth: 380, border: "1px solid var(--hair)",
   },
   modalLabel: {
-    fontFamily: '"Chakra Petch", sans-serif',
-    display: "block", fontSize: 11, letterSpacing: "0.22em",
-    textTransform: "uppercase", color: "var(--gold)", marginBottom: 8,
-    fontWeight: 600,
+    fontFamily: MONO,
+    display: "block", fontSize: 11, letterSpacing: "0.06em",
+    textTransform: "uppercase", color: "var(--muted)", marginBottom: 8,
   },
 };
 
