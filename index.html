@@ -4,28 +4,47 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tech Tree</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
-  html, body { margin: 0; padding: 0; background: #faf7f0; }
+  :root {
+    --field:  #0d1420;
+    --grid:   #182238;
+    --panel:  #16202f;
+    --line:   #3a4a63;
+    --ink:    #e8edf5;
+    --dim:    #8fa0b8;
+    --gold:   #f5b83d;
+    --gold-soft: rgba(245,184,61,0.16);
+  }
+  html, body { margin: 0; padding: 0; background: var(--field); }
   .lbl {
-    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
-    font-size: 13.5px; line-height: 1.34; color: #2b2822;
-    letter-spacing: -0.005em;
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 13.5px; line-height: 1.35; color: var(--ink);
+    font-weight: 500; letter-spacing: 0.005em;
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .lbl-done { color: #4a6b57; }
+  .lbl-done { color: var(--gold); }
+  .lbl-locked { color: var(--dim); font-weight: 400; }
   .del { opacity: 0; transition: opacity .12s; cursor: pointer; }
   .node:hover .del { opacity: 1; }
-  .node rect { transition: stroke .12s, filter .12s; }
-  .node:hover rect { filter: brightness(0.985); }
-  .edge path:first-child { transition: stroke .2s, opacity .2s; }
-  button:focus-visible, input:focus-visible {
-    outline: 2px solid #b8622e; outline-offset: 2px;
+  .node rect { transition: stroke .15s, fill .15s; }
+  .edge-lit {
+    stroke-dasharray: 6 10;
+    animation: flow 1.1s linear infinite;
   }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @keyframes flow { to { stroke-dashoffset: -16; } }
+  button:focus-visible, input:focus-visible {
+    outline: 2px solid var(--gold); outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -37,6 +56,7 @@ const { useState, useEffect, useMemo, useRef } = React;
 /* ------------------------------------------------------------------
    Tech Tree — left-to-right dependency graph.
    Prerequisites on the left, goal on the right.
+   Progress rendered as illumination: done chains glow gold.
    Saves to localStorage. No build step, no server.
 ------------------------------------------------------------------- */
 
@@ -273,6 +293,7 @@ function TechTree() {
 
   const doneCount = nodes.filter(n => n.done).length;
   const nextUp = nodes.filter(n => !n.done && ready(n.id));
+  const pct = nodes.length ? Math.round((doneCount / nodes.length) * 100) : 0;
 
   const path = (a, b) => {
     const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2;
@@ -284,13 +305,18 @@ function TechTree() {
   return (
     <div style={S.shell}>
       <header style={S.head}>
-        <div>
+        <div style={{ flex: 1, minWidth: 220 }}>
           <div style={S.eyebrow}>Dependency tree</div>
           <h1 style={S.h1}>What unlocks what</h1>
         </div>
-        <div style={S.count}>
-          <span style={S.countNum}>{doneCount}</span>
-          <span style={S.countDen}>/{nodes.length}</span>
+        <div style={S.progressWrap}>
+          <div style={S.progressMeta}>
+            <span style={S.countNum}>{doneCount}</span>
+            <span style={S.countDen}> / {nodes.length} lit</span>
+          </div>
+          <div style={S.track} role="progressbar" aria-valuenow={pct} aria-valuemin="0" aria-valuemax="100">
+            <div style={{ ...S.fill, width: pct + "%" }} />
+          </div>
         </div>
       </header>
 
@@ -303,43 +329,66 @@ function TechTree() {
           style={S.input}
           aria-label="New task"
         />
-        <button onClick={addNode} style={S.btn} disabled={!draft.trim()}>Add</button>
+        <button onClick={addNode} style={{...S.btn, opacity: draft.trim() ? 1 : 0.45}} disabled={!draft.trim()}>
+          Add
+        </button>
       </div>
 
-      <p style={S.hint}>
-        Click a task to complete it. Shift-click one task then another to make the
-        first a prerequisite. Double-click to rename. Click a line to unlink.
-        {status && <span style={S.status}> {status}</span>}
-      </p>
+      <div style={S.hintRow}>
+        <span style={S.legend}>
+          <span style={{...S.dot, background: "var(--gold)"}} /> done
+        </span>
+        <span style={S.legend}>
+          <span style={{...S.dot, background: "transparent", border: "1.5px solid var(--ink)"}} /> ready
+        </span>
+        <span style={S.legend}>
+          <span style={{...S.dot, background: "transparent", border: "1.5px solid var(--line)"}} /> locked
+        </span>
+        <span style={S.hintText}>
+          Click to complete · shift-click two tasks to link · double-click to rename · click a line to unlink
+        </span>
+        {status && <span style={S.status}>{status}</span>}
+      </div>
 
       {nodes.length === 0 ? (
-        <div style={S.empty}>Add your goal first, then work backwards to what it needs.</div>
+        <div style={S.empty}>
+          <div style={S.emptyTitle}>The board is dark</div>
+          Add your end goal first, then work backwards to what it needs.
+        </div>
       ) : (
         <div style={S.canvas}>
           <svg width={width} height={height} style={{ display: "block" }}>
             <defs>
               <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4"
                       markerWidth="7" markerHeight="7" orient="auto">
-                <path d="M0,0 L8,4 L0,8 z" fill="#6b6558" />
+                <path d="M0,0 L8,4 L0,8 z" fill="#3a4a63" />
               </marker>
-              <marker id="arDone" viewBox="0 0 8 8" refX="7" refY="4"
+              <marker id="arLit" viewBox="0 0 8 8" refX="7" refY="4"
                       markerWidth="7" markerHeight="7" orient="auto">
-                <path d="M0,0 L8,4 L0,8 z" fill="#3f7d5c" />
+                <path d="M0,0 L8,4 L0,8 z" fill="#f5b83d" />
               </marker>
+              <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+                <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#f5b83d" floodOpacity="0.35"/>
+              </filter>
             </defs>
 
             {edges.map((e, i) => {
               const a = pos[e.from], b = pos[e.to];
               if (!a || !b) return null;
-              const live = doneSet.has(e.from);
+              const lit = doneSet.has(e.from);
               return (
                 <g key={i} className="edge">
+                  {lit && (
+                    <path d={path(a, b)} fill="none" stroke="#f5b83d"
+                          strokeWidth="1.5" opacity="0.25" />
+                  )}
                   <path d={path(a, b)} fill="none"
-                        stroke={live ? "#3f7d5c" : "#6b6558"}
-                        strokeWidth={live ? 2 : 1.5}
-                        strokeDasharray={live ? "none" : "5 4"}
-                        opacity={live ? 0.9 : 0.5}
-                        markerEnd={live ? "url(#arDone)" : "url(#ar)"} />
+                        className={lit ? "edge-lit" : undefined}
+                        stroke={lit ? "#f5b83d" : "#3a4a63"}
+                        strokeWidth={lit ? 2 : 1.5}
+                        strokeDasharray={lit ? undefined : "3 6"}
+                        opacity={lit ? 0.95 : 0.6}
+                        markerEnd={lit ? "url(#arLit)" : "url(#ar)"} />
                   <path d={path(a, b)} fill="none" stroke="transparent" strokeWidth="16"
                         style={{ cursor: "pointer" }}
                         onClick={() => removeEdge(e.from, e.to)}>
@@ -354,26 +403,26 @@ function TechTree() {
               if (!p) return null;
               const unlocked = ready(n.id);
               const isLink   = linkFrom === n.id;
-              const fill   = n.done ? "#e8f0e6" : unlocked ? "#fffdf7" : "#f0ece2";
-              const stroke = isLink ? "#b8622e"
-                           : n.done ? "#3f7d5c"
-                           : unlocked ? "#2b2822" : "#c4bdae";
+              const fill = n.done ? "#1d2233" : "#16202f";
               return (
                 <g key={n.id} transform={`translate(${p.x},${p.y})`} className="node"
                    onClick={e => handleNodeClick(n.id, e)}
                    onDoubleClick={e => { e.stopPropagation(); startEdit(n.id); }}
                    style={{ cursor: "pointer" }}>
-                  <rect width={NODE_W} height={NODE_H} rx="3" fill={fill} stroke={stroke}
-                        strokeWidth={isLink ? 2.5 : (n.done || unlocked) ? 1.75 : 1}
-                        opacity={!n.done && !unlocked ? 0.75 : 1} />
+                  <rect width={NODE_W} height={NODE_H} rx="6"
+                        fill={fill}
+                        stroke={isLink ? "#e8edf5" : n.done ? "#f5b83d" : unlocked ? "#8fa0b8" : "#2a3850"}
+                        strokeWidth={isLink ? 2 : n.done ? 1.75 : unlocked ? 1.5 : 1}
+                        filter={n.done ? "url(#glow)" : undefined}
+                        opacity={!n.done && !unlocked ? 0.65 : 1} />
                   {n.done && (
-                    <path d="M 15 42 l 7 7 l 13 -15" fill="none" stroke="#3f7d5c"
+                    <path d="M 16 44 l 7 7 l 13 -15" fill="none" stroke="#f5b83d"
                           strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   )}
                   <foreignObject x={n.done ? 44 : 16} y="10"
                                  width={NODE_W - (n.done ? 64 : 36)} height={NODE_H - 20}>
                     <div xmlns="http://www.w3.org/1999/xhtml"
-                         className={"lbl" + (n.done ? " lbl-done" : "")}>
+                         className={"lbl" + (n.done ? " lbl-done" : (!unlocked ? " lbl-locked" : ""))}>
                       {n.label}
                     </div>
                   </foreignObject>
@@ -381,7 +430,7 @@ function TechTree() {
                      onClick={e => { e.stopPropagation(); removeNode(n.id); }}>
                     <circle cx={NODE_W - 14} cy="14" r="10" fill="transparent" />
                     <path d={`M ${NODE_W - 18} 10 l 8 8 M ${NODE_W - 10} 10 l -8 8`}
-                          stroke="#8a8272" strokeWidth="1.5" strokeLinecap="round" />
+                          stroke="#8fa0b8" strokeWidth="1.5" strokeLinecap="round" />
                     <title>Delete task</title>
                   </g>
                 </g>
@@ -394,7 +443,12 @@ function TechTree() {
       {nextUp.length > 0 && (
         <div style={S.next}>
           <span style={S.nextLabel}>Ready now</span>
-          {nextUp.map(n => <span key={n.id} style={S.chip}>{n.label}</span>)}
+          {nextUp.map(n => (
+            <button key={n.id} style={S.chip} onClick={() => toggle(n.id)}
+                    title="Mark done">
+              {n.label}
+            </button>
+          ))}
         </div>
       )}
 
@@ -421,77 +475,108 @@ function TechTree() {
 
 const S = {
   shell: {
-    fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif",
-    background: "#faf7f0", color: "#2b2822",
+    fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif',
+    background: "var(--field)", color: "var(--ink)",
     padding: "28px 24px 40px", minHeight: "100vh", boxSizing: "border-box",
   },
   head: {
     display: "flex", alignItems: "flex-end", justifyContent: "space-between",
-    gap: 16, marginBottom: 22, maxWidth: 1100,
+    flexWrap: "wrap", gap: 20, marginBottom: 24, maxWidth: 1100,
   },
   eyebrow: {
-    fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase",
-    color: "#8a8272", marginBottom: 6,
+    fontFamily: '"Chakra Petch", sans-serif',
+    fontSize: 11, letterSpacing: "0.22em", textTransform: "uppercase",
+    color: "var(--gold)", marginBottom: 6, fontWeight: 600,
   },
-  h1: { margin: 0, fontSize: 27, fontWeight: 600, letterSpacing: "-0.02em" },
-  count: { display: "flex", alignItems: "baseline", gap: 1 },
-  countNum: { fontSize: 27, fontWeight: 600, color: "#3f7d5c" },
-  countDen: { fontSize: 16, color: "#8a8272" },
-  bar: { display: "flex", gap: 8, marginBottom: 10, maxWidth: 520 },
+  h1: {
+    fontFamily: '"Chakra Petch", sans-serif',
+    margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: "0.01em",
+  },
+  progressWrap: { minWidth: 200 },
+  progressMeta: { display: "flex", alignItems: "baseline", marginBottom: 6 },
+  countNum: {
+    fontFamily: '"Chakra Petch", sans-serif',
+    fontSize: 24, fontWeight: 700, color: "var(--gold)",
+  },
+  countDen: { fontSize: 13, color: "var(--dim)", marginLeft: 4 },
+  track: {
+    height: 4, background: "var(--panel)", borderRadius: 2,
+    border: "1px solid var(--grid)", overflow: "hidden",
+  },
+  fill: {
+    height: "100%", background: "var(--gold)",
+    transition: "width .4s ease", borderRadius: 2,
+  },
+  bar: { display: "flex", gap: 8, marginBottom: 14, maxWidth: 520 },
   input: {
-    flex: 1, padding: "9px 12px", fontSize: 14, fontFamily: "inherit",
-    border: "1px solid #d9d2c4", borderRadius: 3, background: "#fffdf7",
-    color: "#2b2822", outline: "none", minWidth: 0,
+    flex: 1, padding: "10px 12px", fontSize: 14, fontFamily: "inherit",
+    border: "1px solid var(--line)", borderRadius: 5,
+    background: "var(--panel)", color: "var(--ink)",
+    outline: "none", minWidth: 0,
   },
   btn: {
-    padding: "9px 18px", fontSize: 14, fontFamily: "inherit", fontWeight: 500,
-    border: "1px solid #2b2822", borderRadius: 3, background: "#2b2822",
-    color: "#faf7f0", cursor: "pointer",
+    fontFamily: '"Chakra Petch", sans-serif',
+    padding: "10px 20px", fontSize: 14, fontWeight: 600,
+    border: "1px solid var(--gold)", borderRadius: 5,
+    background: "var(--gold)", color: "#0d1420", cursor: "pointer",
+    letterSpacing: "0.04em",
   },
   btnGhost: {
-    padding: "9px 18px", fontSize: 14, fontFamily: "inherit",
-    border: "1px solid #d9d2c4", borderRadius: 3, background: "transparent",
-    color: "#6b6558", cursor: "pointer",
+    fontFamily: '"Chakra Petch", sans-serif',
+    padding: "10px 20px", fontSize: 14,
+    border: "1px solid var(--line)", borderRadius: 5,
+    background: "transparent", color: "var(--dim)", cursor: "pointer",
   },
-  hint: {
-    fontSize: 12.5, color: "#8a8272", margin: "0 0 18px",
-    maxWidth: 660, lineHeight: 1.5,
+  hintRow: {
+    display: "flex", flexWrap: "wrap", alignItems: "center",
+    gap: 14, marginBottom: 18, fontSize: 12.5, color: "var(--dim)",
   },
-  status: { color: "#b8622e" },
+  legend: { display: "inline-flex", alignItems: "center", gap: 6 },
+  dot: { width: 9, height: 9, borderRadius: 2, display: "inline-block", boxSizing: "border-box" },
+  hintText: { opacity: 0.85 },
+  status: { color: "var(--gold)" },
   canvas: {
     overflowX: "auto", overflowY: "hidden",
-    border: "1px solid #e6e0d2", borderRadius: 4,
+    border: "1px solid var(--grid)", borderRadius: 8,
     background:
-      "repeating-linear-gradient(90deg,#fdfbf5 0 1px,transparent 1px 40px)," +
-      "repeating-linear-gradient(0deg,#fdfbf5 0 1px,transparent 1px 40px),#fbf9f3",
+      "radial-gradient(circle, #1a2438 1px, transparent 1px) 0 0 / 28px 28px, var(--field)",
   },
   empty: {
-    padding: "48px 24px", textAlign: "center", color: "#8a8272",
-    fontSize: 14, border: "1px dashed #d9d2c4", borderRadius: 4,
+    padding: "56px 24px", textAlign: "center", color: "var(--dim)",
+    fontSize: 14, border: "1px dashed var(--line)", borderRadius: 8,
+    lineHeight: 1.6,
+  },
+  emptyTitle: {
+    fontFamily: '"Chakra Petch", sans-serif',
+    fontSize: 16, fontWeight: 600, color: "var(--ink)", marginBottom: 6,
   },
   next: {
     display: "flex", flexWrap: "wrap", alignItems: "center",
-    gap: 8, marginTop: 16,
+    gap: 8, marginTop: 18,
   },
   nextLabel: {
-    fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase",
-    color: "#8a8272",
+    fontFamily: '"Chakra Petch", sans-serif',
+    fontSize: 11, letterSpacing: "0.22em", textTransform: "uppercase",
+    color: "var(--gold)", fontWeight: 600,
   },
   chip: {
-    fontSize: 12.5, padding: "4px 10px", background: "#fffdf7",
-    border: "1px solid #d9d2c4", borderRadius: 20,
+    fontFamily: "inherit", fontSize: 12.5, padding: "6px 12px",
+    background: "var(--panel)", border: "1px solid var(--line)",
+    borderRadius: 20, color: "var(--ink)", cursor: "pointer",
   },
   overlay: {
-    position: "fixed", inset: 0, background: "rgba(43,40,34,0.3)",
+    position: "fixed", inset: 0, background: "rgba(5,9,16,0.7)",
     display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
   },
   modal: {
-    background: "#faf7f0", padding: 22, borderRadius: 4,
-    width: "100%", maxWidth: 380, border: "1px solid #d9d2c4",
+    background: "var(--panel)", padding: 22, borderRadius: 8,
+    width: "100%", maxWidth: 380, border: "1px solid var(--line)",
   },
   modalLabel: {
-    display: "block", fontSize: 11, letterSpacing: "0.14em",
-    textTransform: "uppercase", color: "#8a8272", marginBottom: 8,
+    fontFamily: '"Chakra Petch", sans-serif',
+    display: "block", fontSize: 11, letterSpacing: "0.22em",
+    textTransform: "uppercase", color: "var(--gold)", marginBottom: 8,
+    fontWeight: 600,
   },
 };
 
