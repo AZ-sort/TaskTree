@@ -297,6 +297,7 @@ function TechTree() {
   const [status, setStatus]   = useState("");
   const [drag, setDrag]       = useState(null);   // {from, x, y, over} while dragging a link
   const [vdrag, setVdrag]     = useState(null);   // {id, rank, startY, dy} while reordering a column
+  const [zoom, setZoom]       = useState(1);
   const [activeId, setActiveId] = useState("t1");
   const [treeNames, setTreeNames] = useState({ t1: "My tree" });
   const [treeModal, setTreeModal] = useState(null); // {mode:'new'|'rename', text}
@@ -318,6 +319,7 @@ function TechTree() {
           ));
           setNodes(blob.trees[act].nodes || []);
           setEdges(blob.trees[act].edges || []);
+          if (typeof blob.zoom === "number") setZoom(blob.zoom);
         }
       } else {
         const old = localStorage.getItem(OLD_KEY);
@@ -344,13 +346,13 @@ function TechTree() {
     const timer = setTimeout(() => {
       try {
         localStorage.setItem(STORAGE_KEY,
-          JSON.stringify({ active: activeId, trees: allTrees.current }));
+          JSON.stringify({ active: activeId, zoom, trees: allTrees.current }));
       } catch (err) {
         setStatus("Changes aren't saving. They'll be lost on reload.");
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [nodes, edges, activeId, loaded]);
+  }, [nodes, edges, activeId, zoom, loaded]);
 
   /* tree operations */
   const switchTree = id => {
@@ -481,9 +483,13 @@ function TechTree() {
   };
 
   /* drag-to-link: start from a node's port, drop on another node */
+  // Screen -> SVG coordinates. The svg is rendered at width*zoom, so a screen
+  // delta must be divided by zoom to land in the untransformed coordinate space
+  // that layout() produced.
   const svgPoint = e => {
     const r = svgRef.current.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+    const z = r.width ? width / r.width : 1;
+    return { x: (e.clientX - r.left) * z, y: (e.clientY - r.top) * z };
   };
 
   const startDrag = (id, e) => {
@@ -530,7 +536,7 @@ function TechTree() {
   useEffect(() => {
     if (!vdrag) return;
     document.body.classList.add("linking");
-    const step = NODE_H + ROW_GAP;
+    const step = (NODE_H + ROW_GAP) * zoom;   // threshold in screen px
     const move = e => {
       const dy = e.clientY - vdrag.startY;
       setVdrag(v => v && { ...v, dy });
@@ -548,7 +554,7 @@ function TechTree() {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
-  }, [vdrag && vdrag.id, vdrag && vdrag.startY, columns, rankOf]);
+  }, [vdrag && vdrag.id, vdrag && vdrag.startY, columns, rankOf, zoom]);
 
   const removeEdge = (from, to) =>
     setEdges(e => e.filter(x => !(x.from === from && x.to === to)));
@@ -696,6 +702,14 @@ function TechTree() {
             {status
               ? <span style={S.status}>{status}</span>
               : <span style={S.hint}>click = done · drag ○ to link · drag ⣿ to reorder · double-click = rename</span>}
+            <span style={S.zoomGroup}>
+              <input type="range" min="40" max="130" step="5"
+                     value={Math.round(zoom * 100)}
+                     onChange={e => setZoom(Number(e.target.value) / 100)}
+                     style={S.zoomSlider} aria-label="Zoom" />
+              <button onClick={() => setZoom(1)} style={S.zoomVal}
+                      title="Reset to 100%">{Math.round(zoom * 100)}%</button>
+            </span>
             <span style={S.legendGroup}>
               <span style={S.legend}><span style={{...S.dot, background: "var(--done)", borderColor: "var(--done)"}} />done</span>
               <span style={S.legend}><span style={{...S.dot, borderWidth: 2, borderColor: "var(--amber)"}} />ready</span>
@@ -716,7 +730,9 @@ function TechTree() {
           </div>
         ) : (
           <div style={{ ...S.canvasWrap, ...CANVAS_BG }}>
-            <svg ref={svgRef} width={width} height={height} style={{ display: "block" }}>
+            <svg ref={svgRef} width={width * zoom} height={height * zoom}
+                 viewBox={`0 0 ${width} ${height}`}
+                 style={{ display: "block" }}>
               <defs>
                 <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4"
                         markerWidth="7" markerHeight="7" orient="auto">
@@ -758,7 +774,7 @@ function TechTree() {
                 const isMoving = vdrag && vdrag.id === n.id;
                 return (
                   <g key={n.id}
-                     transform={`translate(${p.x},${p.y + (isMoving ? vdrag.dy : 0)})`}
+                     transform={`translate(${p.x},${p.y + (isMoving ? vdrag.dy / zoom : 0)})`}
                      className="node" opacity={isMoving ? 0.9 : 1}
                      data-nodeid={n.id}
                      onClick={e => handleNodeClick(n.id, e)}
@@ -977,6 +993,17 @@ const S = {
   },
   hint: { letterSpacing: "-0.005em" },
   status: { color: "var(--amber)", fontWeight: 500 },
+  zoomGroup: { display: "flex", alignItems: "center", gap: "var(--s2)" },
+  zoomSlider: {
+    width: 96, accentColor: "#f0a93c", cursor: "pointer",
+    background: "transparent",
+  },
+  zoomVal: {
+    fontFamily: MONO, fontSize: "var(--t-micro)", color: "var(--text3)",
+    background: "transparent", border: "1px solid transparent",
+    borderRadius: "var(--r-ctl)", padding: "2px var(--s2)",
+    cursor: "pointer", minWidth: 40, textAlign: "right",
+  },
   legendGroup: { display: "flex", gap: "var(--s4)" },
   legend: { display: "inline-flex", alignItems: "center", gap: "var(--s2)" },
   dot: {
