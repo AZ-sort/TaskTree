@@ -58,6 +58,8 @@
   .del { opacity: 0; transition: opacity .14s; cursor: pointer; }
   .node:hover .del { opacity: 1; }
   .port { cursor: crosshair; touch-action: none; }
+  .grip { cursor: ns-resize; touch-action: none; opacity: 0; transition: opacity .14s; }
+  .node:hover .grip { opacity: 1; }
   .port circle:first-child { transition: stroke .14s, fill .14s; }
   .node:hover .port circle:first-child { stroke: var(--amber); fill: var(--amber); }
   body.linking, body.linking * { cursor: crosshair !important; user-select: none; }
@@ -164,18 +166,66 @@ function layout(nodes, edges) {
   };
   nodes.forEach(n => compute(n.id));
 
+  // ---- virtual nodes: an edge spanning >1 column gets a waypoint in each
+  // column it crosses. Waypoints occupy a slot in row-packing exactly like real
+  // nodes, so long edges route *around* nodes instead of through them.
+  const virt = {};                 // edgeKey -> [{id, rank}] waypoints in order
+  const isVirt = {};
+  const realEdges = [];
+  edges.forEach(e => {
+    if (!byId[e.from] || !byId[e.to] || e.from === e.to) return;
+    if (dropped.has(e.from + "\u0000" + e.to)) return;
+    const r1 = rank[e.from], r2 = rank[e.to];
+    realEdges.push(e);
+    if (r2 - r1 > 1) {
+      const key = e.from + "\u0000" + e.to;
+      virt[key] = [];
+      for (let r = r1 + 1; r < r2; r++) {
+        const vid = "\u0001v:" + key + ":" + r;
+        virt[key].push({ id: vid, rank: r });
+        isVirt[vid] = true;
+        rank[vid] = r;
+      }
+    }
+  });
+
+  // columns include virtual nodes
   const cols = {};
   nodes.forEach(n => { (cols[rank[n.id]] = cols[rank[n.id]] || []).push(n.id); });
+  Object.values(virt).forEach(list =>
+    list.forEach(v => { (cols[v.rank] = cols[v.rank] || []).push(v.id); })
+  );
 
-  // barycentre ordering to reduce edge crossings
+  // chain adjacency including waypoints, used for barycentre ordering
+  const inAdj  = {};
+  const outAdj = {};
+  const link = (a, b) => {
+    (outAdj[a] = outAdj[a] || []).push(b);
+    (inAdj[b]  = inAdj[b]  || []).push(a);
+  };
+  realEdges.forEach(e => {
+    const key = e.from + "\u0000" + e.to;
+    const chain = virt[key];
+    if (!chain || !chain.length) { link(e.from, e.to); return; }
+    link(e.from, chain[0].id);
+    for (let i = 0; i < chain.length - 1; i++) link(chain[i].id, chain[i + 1].id);
+    link(chain[chain.length - 1].id, e.to);
+  });
+
+  // ---- ordering within each column ----
+  // Nodes carrying an explicit `order` are pinned there (manual reorder);
+  // everything else is placed by barycentre, then appended in a stable way.
   const rankKeys = Object.keys(cols).map(Number).sort((a, b) => a - b);
+  const pinned = {};
+  nodes.forEach(n => { if (typeof n.order === "number") pinned[n.id] = n.order; });
+
   const order = {};
   rankKeys.forEach(r => cols[r].forEach((id, i) => (order[id] = i)));
   for (let pass = 0; pass < 4; pass++) {
     rankKeys.slice(1).forEach(r => {
       cols[r].sort((a, b) => {
-        const bc = id => incoming[id].length
-          ? incoming[id].reduce((s, p) => s + (order[p] ?? 0), 0) / incoming[id].length
+        const bc = id => (inAdj[id] && inAdj[id].length)
+          ? inAdj[id].reduce((s, p) => s + (order[p] ?? 0), 0) / inAdj[id].length
           : (order[id] ?? 0);
         return bc(a) - bc(b);
       });
@@ -183,21 +233,55 @@ function layout(nodes, edges) {
     });
   }
 
+  // apply pins last so manual placement always wins
+  rankKeys.forEach(r => {
+    const list = cols[r];
+    const hasPin = list.some(id => pinned[id] !== undefined);
+    if (!hasPin) return;
+    list.sort((a, b) => {
+      const pa = pinned[a], pb = pinned[b];
+      if (pa !== undefined && pb !== undefined) return pa - pb;
+      if (pa !== undefined) return -1;            // pinned rise above unpinned
+      if (pb !== undefined) return 1;
+      return (order[a] ?? 0) - (order[b] ?? 0);   // unpinned keep barycentre order
+    });
+    list.forEach((id, i) => (order[id] = i));
+  });
+
   const tallest = Math.max(...rankKeys.map(r => cols[r].length), 1);
   const height  = Math.max(tallest * NODE_H + (tallest - 1) * ROW_GAP + 80, NODE_H + 80);
 
-  const pos = {};
+  const pos = {};      // real nodes
+  const vpos = {};     // waypoint centres
   rankKeys.forEach(r => {
     const list = cols[r];
     const colH = list.length * NODE_H + (list.length - 1) * ROW_GAP;
     const startY = (height - colH) / 2;
     list.forEach((id, i) => {
-      pos[id] = { x: 48 + r * (NODE_W + RANK_GAP), y: startY + i * (NODE_H + ROW_GAP) };
+      const x = 48 + r * (NODE_W + RANK_GAP);
+      const y = startY + i * (NODE_H + ROW_GAP);
+      if (isVirt[id]) vpos[id] = { x: x + NODE_W / 2, y: y + NODE_H / 2 };
+      else pos[id] = { x, y };
     });
   });
 
+  // waypoint centres per edge, for drawing
+  const waypoints = {};
+  Object.entries(virt).forEach(([key, list]) => {
+    waypoints[key] = list.map(v => vpos[v.id]).filter(Boolean);
+  });
+
+  // column membership of real nodes, for reorder controls
+  const columns = {};
+  rankKeys.forEach(r => {
+    const reals = cols[r].filter(id => !isVirt[id]);
+    if (reals.length) columns[r] = reals;
+  });
+  const rankOf = {};
+  nodes.forEach(n => { rankOf[n.id] = rank[n.id]; });
+
   const width = 96 + (rankKeys.length || 1) * (NODE_W + RANK_GAP) - RANK_GAP;
-  return { pos, incoming, outgoing, width, height };
+  return { pos, incoming, outgoing, width, height, waypoints, columns, rankOf };
 }
 
 /* ---------------- app ---------------- */
@@ -212,6 +296,7 @@ function TechTree() {
   const [editText, setEditText] = useState("");
   const [status, setStatus]   = useState("");
   const [drag, setDrag]       = useState(null);   // {from, x, y, over} while dragging a link
+  const [vdrag, setVdrag]     = useState(null);   // {id, rank, startY, dy} while reordering a column
   const [activeId, setActiveId] = useState("t1");
   const [treeNames, setTreeNames] = useState({ t1: "My tree" });
   const [treeModal, setTreeModal] = useState(null); // {mode:'new'|'rename', text}
@@ -313,7 +398,7 @@ function TechTree() {
     setTreeModal(null);
   };
 
-  const { pos, incoming, outgoing, width, height } = useMemo(
+  const { pos, incoming, outgoing, width, height, waypoints, columns, rankOf } = useMemo(
     () => layout(nodes, edges), [nodes, edges]
   );
 
@@ -339,6 +424,21 @@ function TechTree() {
 
   const toggle = id =>
     setNodes(n => n.map(x => (x.id === id ? { ...x, done: !x.done } : x)));
+
+  /* reorder a node within its column; writes an explicit `order` on every
+     node in that column so the arrangement sticks across relayouts */
+  const moveInColumn = (id, delta) => {
+    const r = rankOf[id];
+    const col = (columns[r] || []).slice();
+    const i = col.indexOf(id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= col.length) return;
+    col.splice(j, 0, col.splice(i, 1)[0]);
+    setNodes(ns => ns.map(n => {
+      const k = col.indexOf(n.id);
+      return k === -1 ? n : { ...n, order: k };
+    }));
+  };
 
   const wouldCycle = (from, to) => {
     const seen = new Set();
@@ -420,6 +520,36 @@ function TechTree() {
     };
   }, [drag && drag.from, edges]);
 
+  /* drag a node up/down to reorder it within its column */
+  const startVDrag = (id, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setVdrag({ id, rank: rankOf[id], startY: e.clientY, dy: 0 });
+  };
+
+  useEffect(() => {
+    if (!vdrag) return;
+    document.body.classList.add("linking");
+    const step = NODE_H + ROW_GAP;
+    const move = e => {
+      const dy = e.clientY - vdrag.startY;
+      setVdrag(v => v && { ...v, dy });
+      const shift = Math.round(dy / step);
+      if (shift !== 0) {
+        moveInColumn(vdrag.id, shift > 0 ? 1 : -1);
+        setVdrag(v => v && { ...v, startY: v.startY + (shift > 0 ? step : -step), dy: 0 });
+      }
+    };
+    const up = () => setVdrag(null);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      document.body.classList.remove("linking");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, [vdrag && vdrag.id, vdrag && vdrag.startY, columns, rankOf]);
+
   const removeEdge = (from, to) =>
     setEdges(e => e.filter(x => !(x.from === from && x.to === to)));
 
@@ -437,7 +567,7 @@ function TechTree() {
 
   useEffect(() => {
     const onKey = e => {
-      if (e.key === "Escape") { setLinkFrom(null); setEditing(null); setDrag(null); setTreeModal(null); setStatus(""); }
+      if (e.key === "Escape") { setLinkFrom(null); setEditing(null); setDrag(null); setVdrag(null); setTreeModal(null); setStatus(""); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -447,12 +577,39 @@ function TechTree() {
   const nextUp = nodes.filter(n => !n.done && ready(n.id));
   const pct = nodes.length ? Math.round((doneCount / nodes.length) * 100) : 0;
 
-  const path = (a, b) => {
+  // Draw an edge from a to b. If the edge spans more than one column it is
+  // routed through its waypoints so it curves around intervening nodes.
+  const path = (a, b, wps) => {
     const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2;
     const x2 = b.x,          y2 = b.y + NODE_H / 2;
-    const dx = Math.max(50, (x2 - x1) * 0.5);
-    return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+    if (!wps || !wps.length) {
+      const dx = Math.max(50, (x2 - x1) * 0.5);
+      return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+    }
+    // Each waypoint sits at the centre of a reserved slot in an intermediate
+    // column. To avoid clipping that column's other nodes, the route travels
+    // strictly horizontally across the width of each column band and only
+    // changes y inside the gaps between columns.
+    const pts = [{ x: x1, y: y1 }];
+    wps.forEach(w => {
+      pts.push({ x: w.x - NODE_W / 2, y: w.y });   // enter the column band
+      pts.push({ x: w.x + NODE_W / 2, y: w.y });   // leave the column band
+    });
+    pts.push({ x: x2, y: y2 });
+
+    let d = `M ${pts[0].x} ${pts[0].y}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p1 = pts[i], p2 = pts[i + 1];
+      if (Math.abs(p1.y - p2.y) < 0.5) {
+        d += ` L ${p2.x} ${p2.y}`;                 // straight run across a column
+      } else {
+        const dx = Math.max(18, (p2.x - p1.x) * 0.5);
+        d += ` C ${p1.x + dx} ${p1.y}, ${p2.x - dx} ${p2.y}, ${p2.x} ${p2.y}`;
+      }
+    }
+    return d;
   };
+  const wpsFor = e => waypoints[e.from + "\u0000" + e.to];
 
   return (
     <div className="shell" style={S.shell}>
@@ -538,7 +695,7 @@ function TechTree() {
           <div style={S.topRight}>
             {status
               ? <span style={S.status}>{status}</span>
-              : <span style={S.hint}>click = done · drag ○ to link · double-click = rename · click a line to unlink</span>}
+              : <span style={S.hint}>click = done · drag ○ to link · drag ⣿ to reorder · double-click = rename</span>}
             <span style={S.legendGroup}>
               <span style={S.legend}><span style={{...S.dot, background: "var(--done)", borderColor: "var(--done)"}} />done</span>
               <span style={S.legend}><span style={{...S.dot, borderWidth: 2, borderColor: "var(--amber)"}} />ready</span>
@@ -577,13 +734,13 @@ function TechTree() {
                 const lit = doneSet.has(e.from);
                 return (
                   <g key={i} className="edge">
-                    <path d={path(a, b)} fill="none"
+                    <path d={path(a, b, wpsFor(e))} fill="none"
                           stroke={lit ? "#5a90a4" : "#4a586d"}
                           strokeWidth={lit ? 1.75 : 1.25}
                           strokeDasharray={lit ? undefined : "4 5"}
                           opacity={lit ? 0.9 : 0.85}
                           markerEnd={lit ? "url(#arLit)" : "url(#ar)"} />
-                    <path d={path(a, b)} fill="none" stroke="transparent" strokeWidth="16"
+                    <path d={path(a, b, wpsFor(e))} fill="none" stroke="transparent" strokeWidth="16"
                           style={{ cursor: "pointer" }}
                           onClick={() => removeEdge(e.from, e.to)}>
                       <title>Remove this link</title>
@@ -598,8 +755,11 @@ function TechTree() {
                 const unlocked = ready(n.id);
                 const isLink   = linkFrom === n.id;
                 const isOver   = drag && drag.over === n.id;
+                const isMoving = vdrag && vdrag.id === n.id;
                 return (
-                  <g key={n.id} transform={`translate(${p.x},${p.y})`} className="node"
+                  <g key={n.id}
+                     transform={`translate(${p.x},${p.y + (isMoving ? vdrag.dy : 0)})`}
+                     className="node" opacity={isMoving ? 0.9 : 1}
                      data-nodeid={n.id}
                      onClick={e => handleNodeClick(n.id, e)}
                      onDoubleClick={e => { e.stopPropagation(); startEdit(n.id); }}
@@ -613,17 +773,28 @@ function TechTree() {
                           strokeDasharray={!n.done && !unlocked ? "5 4" : undefined}
                           opacity={!n.done && !unlocked ? 0.65 : 1} />
                     {n.done && (
-                      <path d="M 18 45 l 7 7 l 13 -15" fill="none" stroke="#7fb3c4"
+                      <path d="M 20 45 l 7 7 l 13 -15" fill="none" stroke="#7fb3c4"
                             strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                     )}
-                    <foreignObject x={n.done ? 46 : 18} y="12"
-                                   width={NODE_W - (n.done ? 66 : 40)} height={NODE_H - 24}
+                    <foreignObject x={n.done ? 48 : 20} y="12"
+                                   width={NODE_W - (n.done ? 70 : 44)} height={NODE_H - 24}
                                    style={{ pointerEvents: "none" }}>
                       <div xmlns="http://www.w3.org/1999/xhtml"
                            className={"lbl" + (n.done ? " lbl-done" : (!unlocked ? " lbl-locked" : ""))}>
                         {n.label}
                       </div>
                     </foreignObject>
+                    {(columns[rankOf[n.id]] || []).length > 1 && (
+                      <g className="grip" onPointerDown={e => startVDrag(n.id, e)}>
+                        <rect x="0" y="0" width="14" height={NODE_H} fill="transparent" />
+                        <g stroke="#758394" strokeWidth="1.25" strokeLinecap="round">
+                          <path d={`M 5 ${NODE_H/2 - 7} h 4`} />
+                          <path d={`M 5 ${NODE_H/2 - 2} h 4`} />
+                          <path d={`M 5 ${NODE_H/2 + 3} h 4`} />
+                        </g>
+                        <title>Drag up or down to reorder within this column</title>
+                      </g>
+                    )}
                     <g className="port" onPointerDown={e => startDrag(n.id, e)}>
                       <circle cx={NODE_W} cy={NODE_H / 2} r="6"
                               fill="#273345" stroke="#4a586d" strokeWidth="1" />
