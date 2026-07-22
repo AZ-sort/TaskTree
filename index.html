@@ -300,6 +300,8 @@ function TechTree() {
   const [activeId, setActiveId] = useState("t1");
   const [treeNames, setTreeNames] = useState({ t1: "My tree" });
   const [treeModal, setTreeModal] = useState(null); // {mode:'new'|'rename', text}
+  const [bg, setBg] = useState("bands");            // canvas background style
+  const [vignette, setVignette] = useState(true);
   const svgRef = useRef(null);
   const allTrees = useRef({ t1: { name: "My tree", nodes: SEED.nodes, edges: SEED.edges } });
 
@@ -318,6 +320,8 @@ function TechTree() {
           ));
           setNodes(blob.trees[act].nodes || []);
           setEdges(blob.trees[act].edges || []);
+          if (blob.bg) setBg(blob.bg);
+          if (typeof blob.vignette === 'boolean') setVignette(blob.vignette);
         }
       } else {
         const old = localStorage.getItem(OLD_KEY);
@@ -344,13 +348,13 @@ function TechTree() {
     const timer = setTimeout(() => {
       try {
         localStorage.setItem(STORAGE_KEY,
-          JSON.stringify({ active: activeId, trees: allTrees.current }));
+          JSON.stringify({ active: activeId, bg, vignette, trees: allTrees.current }));
       } catch (err) {
         setStatus("Changes aren't saving. They'll be lost on reload.");
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [nodes, edges, activeId, loaded]);
+  }, [nodes, edges, activeId, bg, vignette, loaded]);
 
   /* tree operations */
   const switchTree = id => {
@@ -675,6 +679,29 @@ function TechTree() {
           )}
         </div>
 
+        <div style={S.railSection}>
+          <div style={S.railLabel}>Canvas</div>
+          <div style={S.bgGrid}>
+            {Object.entries(BACKGROUNDS).map(([key, def]) => (
+              <button key={key} onClick={() => setBg(key)}
+                      className="railbtn"
+                      style={{
+                        ...S.bgBtn,
+                        borderColor: bg === key ? "var(--amber)" : "var(--line)",
+                        color: bg === key ? "var(--text)" : "var(--text2)",
+                      }}>
+                {def.label}
+              </button>
+            ))}
+          </div>
+          <label style={S.checkRow}>
+            <input type="checkbox" checked={vignette}
+                   onChange={e => setVignette(e.target.checked)}
+                   style={S.checkbox} />
+            Vignette
+          </label>
+        </div>
+
         <div style={S.railFoot}>
           <div style={S.railLabel}>Progress</div>
           <div style={S.railStat}>
@@ -715,7 +742,7 @@ function TechTree() {
             </div>
           </div>
         ) : (
-          <div style={S.canvasWrap}>
+          <div style={{ ...S.canvasWrap, ...canvasBg(bg, vignette) }}>
             <svg ref={svgRef} width={width} height={height} style={{ display: "block" }}>
               <defs>
                 <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4"
@@ -868,6 +895,65 @@ function TechTree() {
   );
 }
 
+/* ---------------- canvas backgrounds ---------------- */
+
+const COL_PITCH = NODE_W + RANK_GAP;   // one column + its gap
+
+const BACKGROUNDS = {
+  bands: {
+    label: "Column bands",
+    style: {
+      backgroundImage:
+        `repeating-linear-gradient(90deg, rgba(255,255,255,0.022) 0 ${NODE_W + 96}px, transparent ${NODE_W + 96}px ${COL_PITCH}px)`,
+      backgroundPosition: "0 0",
+    },
+  },
+  dots: {
+    label: "Dots",
+    style: {
+      backgroundImage: "radial-gradient(circle, #2a3546 1px, transparent 1px)",
+      backgroundSize: "28px 28px",
+    },
+  },
+  blueprint: {
+    label: "Blueprint",
+    style: {
+      backgroundImage:
+        "linear-gradient(rgba(120,141,169,0.05) 1px, transparent 1px)," +
+        "linear-gradient(90deg, rgba(120,141,169,0.05) 1px, transparent 1px)," +
+        "linear-gradient(rgba(120,141,169,0.09) 1px, transparent 1px)," +
+        "linear-gradient(90deg, rgba(120,141,169,0.09) 1px, transparent 1px)",
+      backgroundSize: "26px 26px, 26px 26px, 104px 104px, 104px 104px",
+    },
+  },
+  depth: {
+    label: "Depth",
+    style: {
+      backgroundImage: "linear-gradient(180deg, rgba(255,255,255,0.028), rgba(0,0,0,0.10))",
+    },
+  },
+  flat: { label: "Flat", style: {} },
+};
+
+const VIGNETTE = {
+  backgroundImage:
+    "radial-gradient(ellipse 120% 100% at 50% 45%, transparent 55%, rgba(0,0,0,0.22) 100%)",
+  backgroundRepeat: "no-repeat",
+  backgroundSize: "100% 100%",
+};
+
+/* combine a background choice with the optional vignette */
+function canvasBg(key, vignette) {
+  const base = BACKGROUNDS[key] ? BACKGROUNDS[key].style : {};
+  if (!vignette) return base;
+  if (!base.backgroundImage) return { ...base, ...VIGNETTE };
+  return {
+    backgroundImage: VIGNETTE.backgroundImage + ", " + base.backgroundImage,
+    backgroundSize: "100% 100%" + (base.backgroundSize ? ", " + base.backgroundSize : ""),
+    backgroundPosition: base.backgroundPosition || undefined,
+  };
+}
+
 /* ---------------- styles ---------------- */
 
 const SANS = '"Instrument Sans", ui-sans-serif, system-ui, sans-serif';
@@ -936,6 +1022,20 @@ const S = {
     border: "1.5px solid var(--amber)", boxSizing: "border-box",
     transition: "background .14s",
   },
+  bgGrid: {
+    display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--s1)",
+  },
+  bgBtn: {
+    fontFamily: SANS, fontSize: "var(--t-small)", padding: "var(--s2) var(--s1)",
+    background: "transparent", border: "1px solid var(--line)",
+    borderRadius: "var(--r-ctl)", cursor: "pointer",
+  },
+  checkRow: {
+    display: "flex", alignItems: "center", gap: "var(--s2)",
+    fontSize: "var(--t-small)", color: "var(--text2)", cursor: "pointer",
+    paddingLeft: 1,
+  },
+  checkbox: { accentColor: "#f0a93c", width: 13, height: 13, cursor: "pointer" },
   railFoot: { display: "flex", flexDirection: "column", gap: "var(--s2)", paddingTop: "var(--s1)" },
   railStat: { display: "flex", alignItems: "baseline", gap: "var(--s1)", fontFamily: MONO, paddingLeft: 1 },
   railStatNum: { fontSize: "var(--t-lead)", fontWeight: 500, color: "var(--text)", lineHeight: 1 },
@@ -972,8 +1072,6 @@ const S = {
   },
   canvasWrap: {
     flex: 1, overflow: "auto", padding: "var(--s4) var(--s5) var(--s5)",
-    backgroundImage: "radial-gradient(circle, #2a3546 1px, transparent 1px)",
-    backgroundSize: "28px 28px",
   },
   emptyWrap: {
     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
