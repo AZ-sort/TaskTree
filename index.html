@@ -26,13 +26,29 @@
     --amber-dim:#8a6320;
     --done:     #5a90a4;
     --done-dim: #24404a;
+
+    /* spacing: 4px base — every gap/padding snaps to this scale */
+    --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+    --s5: 24px; --s6: 32px; --s7: 48px;
+
+    /* radius: two values only — controls vs cards */
+    --r-ctl:  8px;
+    --r-card: 12px;
+
+    /* type scale: 6 steps, clear ratios */
+    --t-micro: 11px;   /* mono labels, legend */
+    --t-small: 13px;   /* secondary UI, rail items */
+    --t-body:  15px;   /* inputs, node labels, body */
+    --t-lead:  20px;   /* rail stat */
+    --t-h2:    28px;   /* empty state */
+    --t-h1:    36px;   /* tree title */
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--field); height: 100%; }
   #root { height: 100%; }
   .lbl {
     font-family: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
-    font-size: 14px; line-height: 1.3; color: var(--text);
+    font-size: 14px; line-height: 1.35; color: var(--text);
     font-weight: 500; letter-spacing: -0.01em;
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
     overflow: hidden;
@@ -46,7 +62,10 @@
   .node:hover .port circle:first-child { stroke: var(--amber); fill: var(--amber); }
   body.linking, body.linking * { cursor: crosshair !important; user-select: none; }
   .node rect { transition: stroke .14s, fill .14s; }
-  .railbtn { transition: background .14s, color .14s; }
+  .node:hover rect { fill: var(--surface2); }
+  body.linking .node:hover rect { fill: inherit; }
+  .railbtn { transition: background .14s, color .14s, border-color .14s; }
+  .railbtn:hover { border-color: var(--line2); }
   .railbtn:hover { background: var(--surface); color: var(--text); }
   .chip { transition: border-color .14s, background .14s; }
   .nextitem:hover { border-color: var(--line2); background: var(--surface2); }
@@ -585,12 +604,12 @@ function TechTree() {
                      onClick={e => handleNodeClick(n.id, e)}
                      onDoubleClick={e => { e.stopPropagation(); startEdit(n.id); }}
                      style={{ cursor: "pointer" }}>
-                    <rect width={NODE_W} height={NODE_H} rx="10"
-                          fill={isOver ? "#33445e" : n.done ? "#263a44" : unlocked ? "#2b74a" : "#232e3f"}
+                    <rect width={NODE_W} height={NODE_H} rx="12"
+                          fill={isOver ? "#3d5170" : n.done ? "#263a44" : unlocked ? "#2b374a" : "#232e3f"}
                           stroke={isOver || isLink ? "#eef1f6"
                                 : n.done ? "#5a90a4"
                                 : unlocked ? "#f0a93c" : "#3d4b61"}
-                          strokeWidth={isOver ? 2.5 : isLink ? 2 : n.done ? 1 : unlocked ? 2 : 1}
+                          strokeWidth={isOver || isLink ? 2 : n.done ? 1 : unlocked ? 2 : 1}
                           strokeDasharray={!n.done && !unlocked ? "5 4" : undefined}
                           opacity={!n.done && !unlocked ? 0.65 : 1} />
                     {n.done && (
@@ -606,8 +625,8 @@ function TechTree() {
                       </div>
                     </foreignObject>
                     <g className="port" onPointerDown={e => startDrag(n.id, e)}>
-                      <circle cx={NODE_W} cy={NODE_H / 2} r="5.5"
-                              fill="#273345" stroke="#4a586d" strokeWidth="1.5" />
+                      <circle cx={NODE_W} cy={NODE_H / 2} r="6"
+                              fill="#273345" stroke="#4a586d" strokeWidth="1" />
                       <circle cx={NODE_W} cy={NODE_H / 2} r="14" fill="transparent" />
                       <title>Drag to another task to link them</title>
                     </g>
@@ -615,7 +634,7 @@ function TechTree() {
                        onClick={e => { e.stopPropagation(); removeNode(n.id); }}>
                       <circle cx={NODE_W - 15} cy="15" r="10" fill="transparent" />
                       <path d={`M ${NODE_W - 19} 11 l 8 8 M ${NODE_W - 11} 11 l -8 8`}
-                            stroke="#8394a6" strokeWidth="1.5" strokeLinecap="round" />
+                            stroke="#8394a6" strokeWidth="1.25" strokeLinecap="round" />
                       <title>Delete task</title>
                     </g>
                   </g>
@@ -688,67 +707,69 @@ const S = {
 
   /* left rail */
   rail: {
-    width: 268, flexShrink: 0, height: "100vh",
+    width: 272, flexShrink: 0, height: "100vh",
     background: "var(--rail)", color: "var(--text)",
     display: "flex", flexDirection: "column",
-    padding: "22px 18px", gap: 22, overflowY: "auto",
+    padding: "var(--s5) var(--s4)", gap: "var(--s5)", overflowY: "auto",
+    borderRight: "1px solid var(--line)",
   },
-  brand: { display: "flex", alignItems: "center", gap: 9 },
+  brand: { display: "flex", alignItems: "center", gap: "var(--s2)", paddingLeft: 1 },
   brandName: {
-    fontSize: 15, fontWeight: 600, letterSpacing: "-0.015em", color: "var(--text)",
+    fontSize: "var(--t-body)", fontWeight: 600, letterSpacing: "-0.02em", color: "var(--text)",
   },
-  railSection: { display: "flex", flexDirection: "column", gap: 8 },
+  railSection: { display: "flex", flexDirection: "column", gap: "var(--s2)" },
   railLabel: {
-    fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em",
+    fontFamily: MONO, fontSize: "var(--t-micro)", letterSpacing: "0.09em",
     textTransform: "uppercase", color: "var(--text3)",
-    display: "flex", alignItems: "center", gap: 7,
+    display: "flex", alignItems: "center", gap: "var(--s2)", paddingLeft: 1,
   },
   badge: {
-    fontFamily: MONO, fontSize: 10, color: "#1a2230", background: "var(--amber)",
-    borderRadius: 10, padding: "1px 6px", letterSpacing: 0,
+    fontFamily: MONO, fontSize: "var(--t-micro)", fontWeight: 500, lineHeight: 1.4,
+    color: "#1a2230", background: "var(--amber)",
+    borderRadius: 999, padding: "0 var(--s2)", letterSpacing: 0,
   },
   select: {
-    fontFamily: SANS, fontSize: 13.5, fontWeight: 500, padding: "9px 10px",
+    fontFamily: SANS, fontSize: "var(--t-small)", fontWeight: 500, padding: "var(--s2) var(--s3)",
     background: "var(--surface)", color: "var(--text)",
-    border: "1px solid var(--line)", borderRadius: 8, cursor: "pointer", width: "100%",
+    border: "1px solid var(--line)", borderRadius: "var(--r-ctl)", cursor: "pointer", width: "100%",
   },
-  railBtnRow: { display: "flex", gap: 4 },
+  railBtnRow: { display: "flex", gap: "var(--s1)" },
   railBtn: {
-    flex: 1, fontFamily: SANS, fontSize: 12, padding: "6px 4px",
+    flex: 1, fontFamily: SANS, fontSize: "var(--t-small)", padding: "var(--s2) var(--s1)",
     background: "transparent", color: "var(--text2)",
-    border: "1px solid var(--line)", borderRadius: 7, cursor: "pointer",
+    border: "1px solid var(--line)", borderRadius: "var(--r-ctl)", cursor: "pointer",
   },
   railInput: {
-    fontFamily: SANS, fontSize: 13.5, padding: "10px 11px", width: "100%",
+    fontFamily: SANS, fontSize: "var(--t-small)", padding: "var(--s3)", width: "100%",
     background: "var(--surface)", color: "var(--text)",
-    border: "1px solid var(--line)", borderRadius: 8, outline: "none",
+    border: "1px solid var(--line)", borderRadius: "var(--r-ctl)", outline: "none",
   },
   addBtn: {
-    fontFamily: SANS, fontSize: 13.5, fontWeight: 600, padding: "10px 12px",
+    fontFamily: SANS, fontSize: "var(--t-small)", fontWeight: 600, padding: "var(--s3)",
     background: "var(--amber)", color: "#1a2230",
-    border: "none", borderRadius: 8, cursor: "pointer", width: "100%",
+    border: "1px solid var(--amber)", borderRadius: "var(--r-ctl)", cursor: "pointer", width: "100%",
   },
   railEmpty: {
-    fontSize: 12.5, color: "var(--text3)", lineHeight: 1.5, paddingTop: 2,
+    fontSize: "var(--t-small)", color: "var(--text3)", lineHeight: 1.5, paddingTop: 2,
   },
   nextItem: {
-    fontFamily: SANS, fontSize: 13, fontWeight: 500, textAlign: "left",
-    padding: "9px 11px", marginBottom: 5, width: "100%",
+    fontFamily: SANS, fontSize: "var(--t-small)", fontWeight: 500, textAlign: "left",
+    padding: "var(--s3)", marginBottom: "var(--s1)", width: "100%",
     background: "var(--surface)", color: "var(--text)",
     border: "1px solid var(--line)",
-    borderRadius: 7, cursor: "pointer", lineHeight: 1.3,
-    display: "flex", alignItems: "center", gap: 10,
+    borderRadius: "var(--r-ctl)", cursor: "pointer", lineHeight: 1.35,
+    display: "flex", alignItems: "center", gap: "var(--s3)",
   },
   ring: {
     width: 13, height: 13, borderRadius: "50%", flexShrink: 0,
     border: "1.5px solid var(--amber)", boxSizing: "border-box",
     transition: "background .14s",
   },
-  railFoot: { display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 },
-  railStat: { display: "flex", alignItems: "baseline", gap: 3, fontFamily: MONO },
-  railStatNum: { fontSize: 26, fontWeight: 500, color: "var(--text)", lineHeight: 1 },
-  railStatDen: { fontSize: 14, color: "var(--text3)" },
-  railPct: { marginLeft: "auto", fontSize: 12, color: "var(--text3)" },
+  railFoot: { display: "flex", flexDirection: "column", gap: "var(--s2)", paddingTop: "var(--s1)" },
+  railStat: { display: "flex", alignItems: "baseline", gap: "var(--s1)", fontFamily: MONO, paddingLeft: 1 },
+  railStatNum: { fontSize: "var(--t-lead)", fontWeight: 500, color: "var(--text)", lineHeight: 1 },
+  railStatDen: { fontSize: "var(--t-small)", color: "var(--text3)" },
+  railPct: { marginLeft: "auto", fontSize: "var(--t-micro)", color: "var(--text3)" },
   track: { height: 3, background: "var(--line)", borderRadius: 2, overflow: "hidden" },
   fill: { height: "100%", background: "var(--done)", transition: "width .45s cubic-bezier(.4,0,.2,1)" },
 
@@ -760,67 +781,67 @@ const S = {
   topbar: {
     display: "flex", alignItems: "baseline", justifyContent: "space-between",
     gap: 24, flexWrap: "wrap",
-    padding: "26px 32px 20px", borderBottom: "1px solid var(--line)",
+    padding: "var(--s5) var(--s6)", borderBottom: "1px solid var(--line)",
   },
   title: {
-    margin: 0, fontSize: 34, fontWeight: 700, letterSpacing: "-0.03em",
+    margin: 0, fontSize: "var(--t-h1)", fontWeight: 700, letterSpacing: "-0.035em",
     lineHeight: 1,
   },
   topRight: {
-    display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap",
-    fontFamily: MONO, fontSize: 11.5, color: "var(--text3)",
+    display: "flex", alignItems: "center", gap: "var(--s5)", flexWrap: "wrap",
+    fontFamily: MONO, fontSize: "var(--t-micro)", color: "var(--text3)",
   },
   hint: { letterSpacing: "-0.005em" },
   status: { color: "var(--amber)", fontWeight: 500 },
-  legendGroup: { display: "flex", gap: 14 },
-  legend: { display: "inline-flex", alignItems: "center", gap: 6 },
+  legendGroup: { display: "flex", gap: "var(--s4)" },
+  legend: { display: "inline-flex", alignItems: "center", gap: "var(--s2)" },
   dot: {
-    width: 10, height: 10, borderRadius: 3, display: "inline-block",
+    width: 10, height: 10, borderRadius: 2, display: "inline-block",
     border: "1px solid", borderColor: "var(--line2)", boxSizing: "border-box",
   },
   canvasWrap: {
-    flex: 1, overflow: "auto", padding: "8px 24px 24px",
+    flex: 1, overflow: "auto", padding: "var(--s4) var(--s5) var(--s5)",
     backgroundImage: "radial-gradient(circle, #2a3546 1px, transparent 1px)",
     backgroundSize: "28px 28px",
   },
   emptyWrap: {
     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-    padding: 32,
+    padding: "var(--s6)",
   },
   emptyInner: { maxWidth: 420 },
   emptyTitle: {
-    margin: "0 0 10px", fontSize: 30, fontWeight: 700, letterSpacing: "-0.03em",
+    margin: "0 0 var(--s3)", fontSize: "var(--t-h2)", fontWeight: 700, letterSpacing: "-0.03em",
   },
-  emptyBody: { margin: 0, fontSize: 15, lineHeight: 1.55, color: "var(--text2)" },
+  emptyBody: { margin: 0, fontSize: "var(--t-body)", lineHeight: 1.6, color: "var(--text2)" },
 
   /* modals */
   overlay: {
     position: "fixed", inset: 0, background: "rgba(12,17,26,0.66)",
-    display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+    display: "flex", alignItems: "center", justifyContent: "center", padding: "var(--s5)",
   },
   modal: {
-    background: "var(--surface)", padding: 24, borderRadius: 12,
-    width: "100%", maxWidth: 400, border: "1px solid var(--line)",
+    background: "var(--surface)", padding: "var(--s5)", borderRadius: "var(--r-card)",
+    width: "100%", maxWidth: 400, border: "1px solid var(--line2)",
     boxShadow: "0 24px 60px rgba(10,14,22,0.45)",
   },
   modalLabel: {
-    fontFamily: MONO, display: "block", fontSize: 10.5, letterSpacing: "0.1em",
-    textTransform: "uppercase", color: "var(--text3)", marginBottom: 9,
+    fontFamily: MONO, display: "block", fontSize: "var(--t-micro)", letterSpacing: "0.09em",
+    textTransform: "uppercase", color: "var(--text3)", marginBottom: "var(--s3)",
   },
   modalInput: {
-    fontFamily: SANS, fontSize: 15, padding: "11px 13px", width: "100%",
-    border: "1px solid var(--line2)", borderRadius: 8,
+    fontFamily: SANS, fontSize: "var(--t-body)", padding: "var(--s3)", width: "100%",
+    border: "1px solid var(--line2)", borderRadius: "var(--r-ctl)",
     background: "var(--field)", color: "var(--text)", outline: "none",
   },
-  modalRow: { display: "flex", gap: 8, marginTop: 16 },
+  modalRow: { display: "flex", gap: "var(--s2)", marginTop: "var(--s4)" },
   btn: {
-    fontFamily: SANS, padding: "10px 20px", fontSize: 14, fontWeight: 600,
-    border: "none", borderRadius: 8,
+    fontFamily: SANS, padding: "var(--s3) var(--s5)", fontSize: "var(--t-small)", fontWeight: 600,
+    border: "1px solid var(--amber)", borderRadius: "var(--r-ctl)",
     background: "var(--amber)", color: "#1a2230", cursor: "pointer",
   },
   btnGhost: {
-    fontFamily: SANS, padding: "10px 20px", fontSize: 14,
-    border: "1px solid var(--line)", borderRadius: 8,
+    fontFamily: SANS, padding: "var(--s3) var(--s5)", fontSize: "var(--t-small)",
+    border: "1px solid var(--line)", borderRadius: "var(--r-ctl)",
     background: "transparent", color: "var(--text2)", cursor: "pointer",
   },
 };
