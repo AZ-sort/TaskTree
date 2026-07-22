@@ -773,11 +773,11 @@ function TechTree() {
                           strokeDasharray={!n.done && !unlocked ? "5 4" : undefined}
                           opacity={!n.done && !unlocked ? 0.65 : 1} />
                     {n.done && (
-                      <path d="M 20 45 l 7 7 l 13 -15" fill="none" stroke="#7fb3c4"
+                      <path d="M 18 45 l 7 7 l 13 -15" fill="none" stroke="#7fb3c4"
                             strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                     )}
-                    <foreignObject x={n.done ? 48 : 20} y="12"
-                                   width={NODE_W - (n.done ? 70 : 44)} height={NODE_H - 24}
+                    <foreignObject x={n.done ? 48 : 18} y="12"
+                                   width={NODE_W - (n.done ? 68 : 40)} height={NODE_H - 24}
                                    style={{ pointerEvents: "none" }}>
                       <div xmlns="http://www.w3.org/1999/xhtml"
                            className={"lbl" + (n.done ? " lbl-done" : (!unlocked ? " lbl-locked" : ""))}>
@@ -786,11 +786,11 @@ function TechTree() {
                     </foreignObject>
                     {(columns[rankOf[n.id]] || []).length > 1 && (
                       <g className="grip" onPointerDown={e => startVDrag(n.id, e)}>
-                        <rect x="0" y="0" width="14" height={NODE_H} fill="transparent" />
+                        <rect x="-22" y={NODE_H / 2 - 16} width="22" height="32" fill="transparent" />
                         <g stroke="#758394" strokeWidth="1.25" strokeLinecap="round">
-                          <path d={`M 5 ${NODE_H/2 - 7} h 4`} />
-                          <path d={`M 5 ${NODE_H/2 - 2} h 4`} />
-                          <path d={`M 5 ${NODE_H/2 + 3} h 4`} />
+                          <path d={`M -14 ${NODE_H/2 - 5} h 6`} />
+                          <path d={`M -14 ${NODE_H/2} h 6`} />
+                          <path d={`M -14 ${NODE_H/2 + 5} h 6`} />
                         </g>
                         <title>Drag up or down to reorder within this column</title>
                       </g>
