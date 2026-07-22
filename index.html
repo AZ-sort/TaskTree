@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Task Tree</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M11 16h5m0 0V8h5m-5 8v8h5' stroke='%230a0a0a' stroke-width='1.5' fill='none'/%3E%3Crect x='3' y='12' width='8' height='8' rx='2' fill='%230a0a0a'/%3E%3Crect x='21' y='4' width='8' height='8' rx='2' fill='none' stroke='%23b5b5b0' stroke-width='1.5' stroke-dasharray='2 2'/%3E%3Crect x='21' y='20' width='8' height='8' rx='2' fill='%23127a4d'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M11 16h5m0 0V8h5m-5 8v8h5' stroke='%230d1b2a' stroke-width='1.5' fill='none'/%3E%3Crect x='3' y='12' width='8' height='8' rx='2' fill='%230d1b2a'/%3E%3Crect x='21' y='4' width='8' height='8' rx='2' fill='none' stroke='%23778da9' stroke-width='1.5' stroke-dasharray='2 2'/%3E%3Crect x='21' y='20' width='8' height='8' rx='2' fill='%23415a77'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -13,21 +13,27 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
   :root {
-    --black:  #0a0a0a;
-    --rail:   #131313;
-    --rail2:  #1e1e1e;
-    --onDark: #f2f2f0;
-    --onDark2:#8a8a85;
-    --canvas: #ffffff;
-    --ink:    #0a0a0a;
-    --muted:  #76766f;
-    --hair:   #eaeae6;
-    --hair2:  #d2d2cb;
-    --green:  #127a4d;
-    --tint:   #f0f6f2;
+    --deep:   #0d1b2a;
+    --rail:   #0d1b2a;
+    --rail2:  #1b263b;
+    --slate:  #415a77;
+    --muteds: #778da9;
+    --paper:  #e0e1dd;
+    --onDark: #e0e1dd;
+    --onDark2:#778da9;
+    --canvas: #e0e1dd;
+    --surface:#ffffff;
+    --ink:    #0d1b2a;
+    --muted:  #4a6076;
+    --hair:   #cbccc7;
+    --hair2:  #a8aeb4;
+    --accent: #e8a33d;
+    --accent-dim: #b87d24;
+    --accent-tint: #fdf6e9;
+    --tint:   #415a77;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: var(--canvas); height: 100%; }
+  html, body { margin: 0; padding: 0; background: var(--paper); height: 100%; }
   #root { height: 100%; }
   .lbl {
     font-family: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
@@ -36,20 +42,21 @@
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .lbl-locked { color: var(--muted); font-weight: 400; }
+  .lbl-locked { color: var(--muteds); font-weight: 400; }
+  .lbl-done { color: #e0e1dd; }
   .del { opacity: 0; transition: opacity .14s; cursor: pointer; }
   .node:hover .del { opacity: 1; }
   .port { cursor: crosshair; touch-action: none; }
   .port circle:first-child { transition: stroke .14s, fill .14s; }
-  .node:hover .port circle:first-child { stroke: var(--ink); fill: var(--ink); }
+  .node:hover .port circle:first-child { stroke: var(--slate); fill: var(--slate); }
   body.linking, body.linking * { cursor: crosshair !important; user-select: none; }
   .node rect { transition: stroke .14s, fill .14s; }
   .railbtn { transition: background .14s, color .14s; }
   .railbtn:hover { background: var(--rail2); color: var(--onDark); }
   .chip { transition: border-color .14s, background .14s; }
-  .chip:hover { border-color: var(--ink); background: var(--tint); }
+  .chip:hover { border-color: var(--slate); background: #eef0f2; }
   button:focus-visible, input:focus-visible, select:focus-visible {
-    outline: 2px solid #4a9dff; outline-offset: 2px;
+    outline: 2px solid var(--slate); outline-offset: 2px;
   }
   ::placeholder { color: var(--onDark2); }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -438,10 +445,10 @@ function TechTree() {
       <aside className="rail" style={S.rail}>
         <div style={S.brand}>
           <svg width="20" height="20" viewBox="0 0 32 32" style={{ flexShrink: 0 }}>
-            <path d="M11 16h5m0 0V8h5m-5 8v8h5" stroke="#f2f2f0" strokeWidth="1.5" fill="none"/>
-            <rect x="3" y="12" width="8" height="8" rx="2" fill="#f2f2f0"/>
-            <rect x="21" y="4" width="8" height="8" rx="2" fill="none" stroke="#8a8a85" strokeWidth="1.5" strokeDasharray="2 2"/>
-            <rect x="21" y="20" width="8" height="8" rx="2" fill="#2fb87a"/>
+            <path d="M11 16h5m0 0V8h5m-5 8v8h5" stroke="#e0e1dd" strokeWidth="1.5" fill="none"/>
+            <rect x="3" y="12" width="8" height="8" rx="2" fill="#e0e1dd"/>
+            <rect x="21" y="4" width="8" height="8" rx="2" fill="none" stroke="#778da9" strokeWidth="1.5" strokeDasharray="2 2"/>
+            <rect x="21" y="20" width="8" height="8" rx="2" fill="#415a77"/>
           </svg>
           <span style={S.brandName}>Task Tree</span>
         </div>
@@ -515,9 +522,9 @@ function TechTree() {
               ? <span style={S.status}>{status}</span>
               : <span style={S.hint}>click = done · drag ○ to link · double-click = rename · click a line to unlink</span>}
             <span style={S.legendGroup}>
-              <span style={S.legend}><span style={{...S.dot, background: "var(--green)", borderColor: "var(--green)"}} />done</span>
-              <span style={S.legend}><span style={{...S.dot, borderWidth: 2, borderColor: "var(--ink)"}} />ready</span>
-              <span style={S.legend}><span style={{...S.dot, borderStyle: "dashed", borderColor: "var(--hair2)"}} />locked</span>
+              <span style={S.legend}><span style={{...S.dot, background: "var(--slate)", borderColor: "var(--slate)"}} />done</span>
+              <span style={S.legend}><span style={{...S.dot, borderWidth: 2, borderColor: "var(--accent)", background: "var(--accent-tint)"}} />ready</span>
+              <span style={S.legend}><span style={{...S.dot, borderStyle: "dashed", borderColor: "var(--muteds)"}} />locked</span>
             </span>
           </div>
         </div>
@@ -538,11 +545,11 @@ function TechTree() {
               <defs>
                 <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4"
                         markerWidth="7" markerHeight="7" orient="auto">
-                  <path d="M0,0 L8,4 L0,8 z" fill="#c7c7c0" />
+                  <path d="M0,0 L8,4 L0,8 z" fill="#778da9" />
                 </marker>
                 <marker id="arLit" viewBox="0 0 8 8" refX="7" refY="4"
                         markerWidth="7" markerHeight="7" orient="auto">
-                  <path d="M0,0 L8,4 L0,8 z" fill="#127a4d" />
+                  <path d="M0,0 L8,4 L0,8 z" fill="#415a77" />
                 </marker>
               </defs>
 
@@ -553,7 +560,7 @@ function TechTree() {
                 return (
                   <g key={i} className="edge">
                     <path d={path(a, b)} fill="none"
-                          stroke={lit ? "#127a4d" : "#c7c7c0"}
+                          stroke={lit ? "#415a77" : "#a8aeb4"}
                           strokeWidth={lit ? 1.75 : 1.25}
                           strokeDasharray={lit ? undefined : "4 5"}
                           opacity={lit ? 0.9 : 0.85}
@@ -580,28 +587,28 @@ function TechTree() {
                      onDoubleClick={e => { e.stopPropagation(); startEdit(n.id); }}
                      style={{ cursor: "pointer" }}>
                     <rect width={NODE_W} height={NODE_H} rx="10"
-                          fill={isOver ? "#f0f6f2" : n.done ? "#f0f6f2" : "#ffffff"}
-                          stroke={isOver || isLink ? "#0a0a0a"
-                                : n.done ? "#127a4d"
-                                : unlocked ? "#0a0a0a" : "#d2d2cb"}
+                          fill={isOver ? "#eef0f2" : n.done ? "#415a77" : unlocked ? "#fffdf8" : "#ffffff"}
+                          stroke={isOver || isLink ? "#0d1b2a"
+                                : n.done ? "#415a77"
+                                : unlocked ? "#e8a33d" : "#a8aeb4"}
                           strokeWidth={isOver ? 2.5 : isLink ? 2 : n.done ? 1 : unlocked ? 2 : 1}
                           strokeDasharray={!n.done && !unlocked ? "5 4" : undefined}
                           opacity={!n.done && !unlocked ? 0.65 : 1} />
                     {n.done && (
-                      <path d="M 18 45 l 7 7 l 13 -15" fill="none" stroke="#127a4d"
+                      <path d="M 18 45 l 7 7 l 13 -15" fill="none" stroke="#e0e1dd"
                             strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                     )}
                     <foreignObject x={n.done ? 46 : 18} y="12"
                                    width={NODE_W - (n.done ? 66 : 40)} height={NODE_H - 24}
                                    style={{ pointerEvents: "none" }}>
                       <div xmlns="http://www.w3.org/1999/xhtml"
-                           className={"lbl" + (!n.done && !unlocked ? " lbl-locked" : "")}>
+                           className={"lbl" + (n.done ? " lbl-done" : (!unlocked ? " lbl-locked" : ""))}>
                         {n.label}
                       </div>
                     </foreignObject>
                     <g className="port" onPointerDown={e => startDrag(n.id, e)}>
                       <circle cx={NODE_W} cy={NODE_H / 2} r="5.5"
-                              fill="#ffffff" stroke="#d2d2cb" strokeWidth="1.5" />
+                              fill="#ffffff" stroke="#a8aeb4" strokeWidth="1.5" />
                       <circle cx={NODE_W} cy={NODE_H / 2} r="14" fill="transparent" />
                       <title>Drag to another task to link them</title>
                     </g>
@@ -609,7 +616,7 @@ function TechTree() {
                        onClick={e => { e.stopPropagation(); removeNode(n.id); }}>
                       <circle cx={NODE_W - 15} cy="15" r="10" fill="transparent" />
                       <path d={`M ${NODE_W - 19} 11 l 8 8 M ${NODE_W - 11} 11 l -8 8`}
-                            stroke="#76766f" strokeWidth="1.5" strokeLinecap="round" />
+                            stroke="#778da9" strokeWidth="1.5" strokeLinecap="round" />
                       <title>Delete task</title>
                     </g>
                   </g>
@@ -623,7 +630,7 @@ function TechTree() {
                 const dx = Math.max(40, Math.abs(drag.x - x1) * 0.5);
                 return (
                   <path d={`M ${x1} ${y1} C ${x1 + dx} ${y1}, ${drag.x - dx} ${drag.y}, ${drag.x} ${drag.y}`}
-                        fill="none" stroke="#0a0a0a" strokeWidth="1.75"
+                        fill="none" stroke="#0d1b2a" strokeWidth="1.75"
                         strokeDasharray="5 5" opacity="0.65"
                         style={{ pointerEvents: "none" }} />
                 );
@@ -698,28 +705,28 @@ const S = {
     display: "flex", alignItems: "center", gap: 7,
   },
   badge: {
-    fontFamily: MONO, fontSize: 10, color: "var(--black)", background: "#2fb87a",
+    fontFamily: MONO, fontSize: 10, color: "#0d1b2a", background: "var(--accent)",
     borderRadius: 10, padding: "1px 6px", letterSpacing: 0,
   },
   select: {
     fontFamily: SANS, fontSize: 13.5, fontWeight: 500, padding: "9px 10px",
     background: "var(--rail2)", color: "var(--onDark)",
-    border: "1px solid #2b2b2b", borderRadius: 8, cursor: "pointer", width: "100%",
+    border: "1px solid #24344a", borderRadius: 8, cursor: "pointer", width: "100%",
   },
   railBtnRow: { display: "flex", gap: 4 },
   railBtn: {
     flex: 1, fontFamily: SANS, fontSize: 12, padding: "6px 4px",
     background: "transparent", color: "var(--onDark2)",
-    border: "1px solid #2b2b2b", borderRadius: 7, cursor: "pointer",
+    border: "1px solid #24344a", borderRadius: 7, cursor: "pointer",
   },
   railInput: {
     fontFamily: SANS, fontSize: 13.5, padding: "10px 11px", width: "100%",
     background: "var(--rail2)", color: "var(--onDark)",
-    border: "1px solid #2b2b2b", borderRadius: 8, outline: "none",
+    border: "1px solid #24344a", borderRadius: 8, outline: "none",
   },
   addBtn: {
     fontFamily: SANS, fontSize: 13.5, fontWeight: 600, padding: "10px 12px",
-    background: "var(--onDark)", color: "var(--black)",
+    background: "var(--paper)", color: "var(--deep)",
     border: "none", borderRadius: 8, cursor: "pointer", width: "100%",
   },
   railEmpty: {
@@ -729,7 +736,7 @@ const S = {
     fontFamily: SANS, fontSize: 13, fontWeight: 500, textAlign: "left",
     padding: "9px 11px", marginBottom: 5, width: "100%",
     background: "var(--rail2)", color: "var(--onDark)",
-    border: "1px solid #2b2b2b", borderLeft: "2px solid #2fb87a",
+    border: "1px solid #24344a", borderLeft: "3px solid #e8a33d",
     borderRadius: 7, cursor: "pointer", lineHeight: 1.3,
   },
   railFoot: { display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 },
@@ -737,13 +744,13 @@ const S = {
   railStatNum: { fontSize: 26, fontWeight: 500, color: "var(--onDark)", lineHeight: 1 },
   railStatDen: { fontSize: 14, color: "var(--onDark2)" },
   railPct: { marginLeft: "auto", fontSize: 12, color: "var(--onDark2)" },
-  track: { height: 3, background: "#2b2b2b", borderRadius: 2, overflow: "hidden" },
-  fill: { height: "100%", background: "#2fb87a", transition: "width .45s cubic-bezier(.4,0,.2,1)" },
+  track: { height: 3, background: "#1b263b", borderRadius: 2, overflow: "hidden" },
+  fill: { height: "100%", background: "#778da9", transition: "width .45s cubic-bezier(.4,0,.2,1)" },
 
   /* workspace */
   main: {
     flex: 1, minWidth: 0, display: "flex", flexDirection: "column",
-    background: "var(--canvas)",
+    background: "var(--paper)",
   },
   topbar: {
     display: "flex", alignItems: "baseline", justifyContent: "space-between",
@@ -768,7 +775,7 @@ const S = {
   },
   canvasWrap: {
     flex: 1, overflow: "auto", padding: "8px 24px 24px",
-    backgroundImage: "radial-gradient(circle, #e8e8e3 1px, transparent 1px)",
+    backgroundImage: "radial-gradient(circle, #c2c6c4 1px, transparent 1px)",
     backgroundSize: "28px 28px",
   },
   emptyWrap: {
@@ -783,13 +790,13 @@ const S = {
 
   /* modals */
   overlay: {
-    position: "fixed", inset: 0, background: "rgba(10,10,10,0.45)",
+    position: "fixed", inset: 0, background: "rgba(13,27,42,0.55)",
     display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
   },
   modal: {
-    background: "var(--canvas)", padding: 24, borderRadius: 12,
+    background: "var(--surface)", padding: 24, borderRadius: 12,
     width: "100%", maxWidth: 400, border: "1px solid var(--hair)",
-    boxShadow: "0 18px 50px rgba(10,10,10,0.18)",
+    boxShadow: "0 18px 50px rgba(13,27,42,0.22)",
   },
   modalLabel: {
     fontFamily: MONO, display: "block", fontSize: 10.5, letterSpacing: "0.1em",
@@ -798,13 +805,13 @@ const S = {
   modalInput: {
     fontFamily: SANS, fontSize: 15, padding: "11px 13px", width: "100%",
     border: "1px solid var(--hair2)", borderRadius: 8,
-    background: "var(--canvas)", color: "var(--ink)", outline: "none",
+    background: "var(--surface)", color: "var(--ink)", outline: "none",
   },
   modalRow: { display: "flex", gap: 8, marginTop: 16 },
   btn: {
     fontFamily: SANS, padding: "10px 20px", fontSize: 14, fontWeight: 600,
-    border: "1px solid var(--ink)", borderRadius: 8,
-    background: "var(--ink)", color: "#ffffff", cursor: "pointer",
+    border: "1px solid var(--slate)", borderRadius: 8,
+    background: "var(--slate)", color: "#ffffff", cursor: "pointer",
   },
   btnGhost: {
     fontFamily: SANS, padding: "10px 20px", fontSize: 14,
