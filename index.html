@@ -105,22 +105,6 @@ const ROW_GAP  = 38;
 const STORAGE_KEY = "techtree:v2";
 const OLD_KEY     = "techtree:graph";   // pre-multi-tree format, migrated on first load
 
-const SEED = {
-  nodes: [
-    { id: "n1", label: "Async / turn-based mode", done: false },
-    { id: "n2", label: "Fix landing copy", done: false },
-    { id: "n3", label: "Post to r/LongDistance", done: false },
-    { id: "n4", label: "A stranger couple plays twice in one week", done: false },
-    { id: "n5", label: "2P Duel board", done: true },
-  ],
-  edges: [
-    { from: "n5", to: "n1" },
-    { from: "n1", to: "n3" },
-    { from: "n2", to: "n3" },
-    { from: "n3", to: "n4" },
-  ],
-};
-
 /* ---------------- layout ---------------- */
 
 function layout(nodes, edges) {
@@ -287,8 +271,8 @@ function layout(nodes, edges) {
 /* ---------------- app ---------------- */
 
 function TechTree() {
-  const [nodes, setNodes]     = useState(SEED.nodes);
-  const [edges, setEdges]     = useState(SEED.edges);
+  const [nodes, setNodes]     = useState([]);
+  const [edges, setEdges]     = useState([]);
   const [loaded, setLoaded]   = useState(false);
   const [draft, setDraft]     = useState("");
   const [linkFrom, setLinkFrom] = useState(null);
@@ -302,7 +286,7 @@ function TechTree() {
   const [treeNames, setTreeNames] = useState({ t1: "My tree" });
   const [treeModal, setTreeModal] = useState(null); // {mode:'new'|'rename', text}
   const svgRef = useRef(null);
-  const allTrees = useRef({ t1: { name: "My tree", nodes: SEED.nodes, edges: SEED.edges } });
+  const allTrees = useRef({ t1: { name: "My tree", nodes: [], edges: [] } });
 
   /* load once — migrate old single-tree data if present */
   useEffect(() => {
@@ -333,7 +317,7 @@ function TechTree() {
         }
       }
     } catch (err) {
-      setStatus("Couldn't read saved data. Starting from the example tree.");
+      setStatus("Couldn't read saved data. Starting fresh.");
     }
     setLoaded(true);
   }, []);
